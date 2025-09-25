@@ -1,0 +1,92 @@
+1. Menú lateral fijo
+Qué aporta: navegación rápida y clara.
+
+
+Posible mejora: en pantallas móviles, un menú lateral fijo puede restar espacio útil. Podría reemplazarse por un menú desplegable tipo “hamburguesa”, que se oculte automáticamente.
+
+
+Riesgo actual: el espacio reducido en pantallas pequeñas puede hacer que los contenidos (horario, calificaciones) se vean comprimidos.
+
+
+✅ Recomendación: Menú lateral solo en pantallas grandes (tablets/laptops), y menú superior o flotante en móviles.
+
+2. Barra superior fija con ícono de usuario
+Qué aporta: consistencia en todas las pantallas.
+
+
+Posible mejora: el ícono de usuario puede evolucionar a un menú contextual con opciones rápidas (perfil, notificaciones, cerrar sesión).
+
+
+Riesgo actual: si solo muestra el ícono sin funciones extra, ocupa espacio sin aportar demasiado.
+
+
+✅ Recomendación: convertirlo en un pequeño menú desplegable que aporte valor.
+
+3. Pantalla de Registro y Autenticación
+Qué aporta: estructura sencilla y clara.
+
+
+Posible mejora: añadir validación en tiempo real (ej. “correo no válido” antes de enviar) para evitar frustración.
+
+
+Riesgo actual: demasiadas opciones en una sola vista (iniciar sesión, recuperar contraseña, crear cuenta) puede dispersar al usuario.
+
+
+✅ Recomendación: mantener solo lo esencial en la pantalla inicial (“correo, contraseña, iniciar sesión”) y mover “crear cuenta”/“recuperar contraseña” a vistas secundarias.
+
+4. Pantalla de Consulta de Calificaciones
+Qué aporta: claridad al mostrar lista de materias + promedio + parciales.
+
+
+Posible mejora: mostrar resumen visual (ej. gráfico de barras o medidor de promedio general).
+
+
+Riesgo actual: depender solo de listas largas puede cansar; un estudiante con 8–10 materias perdería visión global.
+
+
+✅ Recomendación: añadir un bloque superior con promedio general y/o alertas (“Materia reprobada”, “Promedio bajo en Matemáticas”).
+
+5. Pantalla de Horario
+Qué aporta: cuadrícula semanal reconocible (similar a Google Calendar).
+
+
+Posible mejora: opción de cambiar vista: semanal / diaria.
+
+
+Riesgo actual: la cuadrícula fija puede saturar en pantallas pequeñas (horas y días juntos).
+
+
+✅ Recomendación: en móviles, usar vista compacta diaria con scroll y mantener cuadrícula semanal en tablets/PC.
+
+6. Manejo de mensajes emergentes
+Qué aporta: claridad en notificaciones y confirmaciones.
+
+
+Posible mejora: estandarizar colores/íconos (verde = éxito, rojo = error, azul = info).
+
+
+Riesgo actual: demasiados mensajes emergentes pueden saturar al usuario si aparecen muy seguido.
+
+
+✅ Recomendación: usar un sistema discreto y consistente (toast notifications con tiempo limitado), y solo mensajes persistentes para errores críticos.
+
+📌 Conclusión
+La base de tu UI es muy buena.
+ Los ajustes clave serían:
+Menú adaptable al dispositivo (lateral en desktop, superior/hamburguesa en móvil).
+
+
+Ícono de usuario con más funciones, no solo decorativo.
+
+
+Login simplificado (con vistas secundarias para opciones extras).
+
+
+Visualización enriquecida de calificaciones (gráficos + alertas).
+
+
+Horario flexible con vistas adaptadas al dispositivo.
+
+
+Notificaciones menos intrusivas y mejor estandarizadas.
+
