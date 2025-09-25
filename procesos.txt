@@ -1,0 +1,86 @@
+1. Proceso de Registro y Autenticación de Usuario
+Mejora sugerida:
+ En lugar de depender únicamente de correo y contraseña, se puede fomentar el uso de autenticación multifactor (MFA) (ejemplo: código SMS o app de autenticación). Esto no cambia drásticamente el proceso, pero aumenta significativamente la seguridad.
+
+
+Posible riesgo actual:
+ El uso exclusivo de correo institucional puede ser insuficiente si un atacante roba la contraseña.
+
+
+Recomendación extra:
+ Permitir integración con SSO (Single Sign-On) universitario, para que el mismo login institucional funcione en todas las apps.
+
+
+
+2. Proceso de Personalización de Interfaz
+Mejora sugerida:
+ Incluir personalización guiada por analítica. Por ejemplo, la app podría sugerir temas o accesos rápidos más usados, en lugar de esperar que el alumno configure todo manualmente.
+
+
+Posible riesgo actual:
+ Si se deja todo al usuario, muchos no configuran nada y pierden la oportunidad de mejorar su experiencia.
+
+
+Recomendación extra:
+ Incorporar un “modo accesible” (fuente grande, contraste alto, lectores de pantalla) para cumplir con accesibilidad (WCAG).
+
+
+
+3. Proceso de Solicitud de Documentos
+Mejora sugerida:
+ Agregar un estado en tiempo real del trámite (ejemplo: “En revisión”, “Firmado”, “Listo para recoger”).
+
+
+Posible riesgo actual:
+ Solo mostrar confirmación de envío puede generar incertidumbre y que los estudiantes saturen oficinas preguntando por el avance.
+
+
+Recomendación extra:
+ Implementar la posibilidad de descargar documentos digitales con firma electrónica cuando sea posible, reduciendo cargas administrativas.
+
+
+
+4. Proceso de Gestión de Notificaciones
+Mejora sugerida:
+ Permitir que los usuarios configuren prioridades o categorías (ej. “solo avisos académicos”, “eventos culturales”).
+
+
+Posible riesgo actual:
+ Bombardeo de notificaciones poco relevantes → los estudiantes terminan ignorando todas.
+
+
+Recomendación extra:
+ Incorporar notificaciones push fuera de la app y sincronización con calendario (Google/Outlook) para eventos importantes.
+
+
+
+5. Proceso de Generación de Reportes de Uso y Fallas
+Mejora sugerida:
+ No limitarse al reporte mensual: implementar un dashboard en tiempo real con métricas clave (usuarios activos, errores críticos, funcionalidades más usadas).
+
+
+Posible riesgo actual:
+ Un error grave detectado en un reporte mensual tardaría demasiado en resolverse.
+
+
+Recomendación extra:
+ Incluir una sección de feedback inmediato en la app (ejemplo: “¿Te funcionó esta pantalla? 👍/👎”) que nutra la recopilación de datos.
+
+
+
+✅ Conclusión
+El esquema original ya está muy sólido. Mis ajustes no cambian la base, solo fortalecen seguridad, accesibilidad, usabilidad y eficiencia operativa.
+ La clave está en:
+Añadir seguridad extra (MFA, SSO).
+
+
+Personalización guiada (para no dejar todo al usuario).
+
+
+Trámites con estado visible y opción digital.
+
+
+Notificaciones filtradas para evitar saturación.
+
+
+Reportes más inmediatos y participativos.
