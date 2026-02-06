@@ -2,8 +2,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { useDarkMode } from '@/composables/useDarkMode.js';
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
+import MultiSelect from '@/Components/Form/MultiSelect.vue';
 // Heroicons - Outline version
 import { 
     PlusIcon, 
@@ -26,6 +27,33 @@ const showEditModal = ref(false);
 const selectedTeacher = ref(null);
 const searchQuery = ref('');
 
+// Datos de áreas y carreras
+const areas = ref([]);
+const careers = ref([]);
+const careersByArea = ref({});
+const availableGroups = ref([]);
+const loadingGroups = ref(false);
+
+// Computed para carreras filtradas por sectores seleccionados (crear)
+const filteredCareersForNew = computed(() => {
+    if (!newTeacher.value.area_ids || newTeacher.value.area_ids.length === 0) {
+        return []; // Si no hay sectores seleccionados, no mostrar carreras
+    }
+    return careers.value.filter(career => 
+        newTeacher.value.area_ids.includes(career.area_id)
+    );
+});
+
+// Computed para carreras filtradas por sectores seleccionados (editar)
+const filteredCareersForEdit = computed(() => {
+    if (!editTeacher.value.area_ids || editTeacher.value.area_ids.length === 0) {
+        return []; // Si no hay sectores seleccionados, no mostrar carreras
+    }
+    return careers.value.filter(career => 
+        editTeacher.value.area_ids.includes(career.area_id)
+    );
+});
+
 // Formulario para agregar maestro
 const newTeacher = ref({
     name: '',
@@ -34,6 +62,9 @@ const newTeacher = ref({
     email: '',
     password: '',
     password_confirmation: '',
+    area_ids: [],
+    career_ids: [],
+    group_ids: [],
 });
 
 // Formulario para editar maestro
@@ -43,6 +74,9 @@ const editTeacher = ref({
     apellido_paterno: '',
     apellido_materno: '',
     email: '',
+    area_ids: [],
+    career_ids: [],
+    group_ids: [],
 });
 
 // Función para normalizar texto para correo (eliminar acentos, espacios, etc.)
@@ -70,6 +104,33 @@ watch([() => newTeacher.value.apellido_paterno, () => newTeacher.value.name], ([
         newTeacher.value.email = '';
     }
 });
+
+// Cargar áreas y carreras
+const loadAreas = async () => {
+    try {
+        const response = await axios.get('/admin/teachers/areas/list');
+        areas.value = response.data;
+    } catch (error) {
+        console.error('Error cargando áreas:', error);
+    }
+};
+
+const loadCareers = async () => {
+    try {
+        const response = await axios.get('/admin/teachers/careers/list');
+        careers.value = response.data;
+        // Organizar carreras por área
+        careersByArea.value = {};
+        response.data.forEach(career => {
+            if (!careersByArea.value[career.area_id]) {
+                careersByArea.value[career.area_id] = [];
+            }
+            careersByArea.value[career.area_id].push(career);
+        });
+    } catch (error) {
+        console.error('Error cargando carreras:', error);
+    }
+};
 
 // Cargar maestros
 const loadTeachers = async () => {
@@ -99,6 +160,9 @@ const addTeacher = async () => {
             apellido_materno: newTeacher.value.apellido_materno || '',
             password: newTeacher.value.password,
             password_confirmation: newTeacher.value.password_confirmation,
+            area_ids: newTeacher.value.area_ids || [],
+            career_ids: newTeacher.value.career_ids || [],
+            group_ids: newTeacher.value.group_ids || [],
             // El email se genera automáticamente en el backend
         });
 
@@ -120,7 +184,7 @@ const addTeacher = async () => {
 };
 
 // Editar maestro
-const openEditModal = (teacher) => {
+const openEditModal = async (teacher) => {
     selectedTeacher.value = teacher;
     // Separar nombre completo en partes
     const nameParts = teacher.name.split(' ');
@@ -130,8 +194,14 @@ const openEditModal = (teacher) => {
         apellido_materno: nameParts[1] || '',
         name: nameParts.slice(2).join(' ') || '',
         email: teacher.email,
+        area_ids: teacher.areas ? teacher.areas.map(a => a.id) : [],
+        career_ids: teacher.careers ? teacher.careers.map(c => c.id) : [],
+        group_ids: teacher.tutor_groups ? teacher.tutor_groups.map(g => g.id) : [],
     };
     showEditModal.value = true;
+    // Cargar grupos disponibles después de un pequeño delay para que se carguen las carreras
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await loadAvailableGroups('edit');
 };
 
 const updateTeacher = async () => {
@@ -141,6 +211,9 @@ const updateTeacher = async () => {
         const response = await axios.put(`/admin/teachers/${editTeacher.value.id}`, {
             name: fullName,
             email: editTeacher.value.email,
+            area_ids: editTeacher.value.area_ids || [],
+            career_ids: editTeacher.value.career_ids || [],
+            group_ids: editTeacher.value.group_ids || [],
         });
 
         const index = teachers.value.findIndex(t => t.id === editTeacher.value.id);
@@ -184,8 +257,83 @@ const resetForm = () => {
         email: '',
         password: '',
         password_confirmation: '',
+        area_ids: [],
+        career_ids: [], // Limpiar carreras al resetear
+        group_ids: [], // Limpiar grupos al resetear
     };
+    availableGroups.value = [];
 };
+
+// Watch para limpiar carreras cuando cambian los sectores (crear)
+watch(() => newTeacher.value.area_ids, (newAreas, oldAreas) => {
+    // Si se deseleccionaron sectores, remover carreras que no pertenecen a los sectores actuales
+    if (newTeacher.value.career_ids && newTeacher.value.career_ids.length > 0) {
+        const validCareerIds = filteredCareersForNew.value.map(c => c.id);
+        newTeacher.value.career_ids = newTeacher.value.career_ids.filter(id => validCareerIds.includes(id));
+    }
+});
+
+// Watch para limpiar carreras cuando cambian los sectores (editar)
+watch(() => editTeacher.value.area_ids, (newAreas, oldAreas) => {
+    // Si se deseleccionaron sectores, remover carreras que no pertenecen a los sectores actuales
+    if (editTeacher.value.career_ids && editTeacher.value.career_ids.length > 0) {
+        const validCareerIds = filteredCareersForEdit.value.map(c => c.id);
+        editTeacher.value.career_ids = editTeacher.value.career_ids.filter(id => validCareerIds.includes(id));
+    }
+    // Recargar grupos cuando cambian los sectores
+    if (editTeacher.value.id) {
+        loadAvailableGroups('edit');
+    }
+});
+
+// Cargar grupos disponibles basados en las carreras seleccionadas
+const loadAvailableGroups = async (mode = 'new') => {
+    try {
+        loadingGroups.value = true;
+        const careerIds = mode === 'new' ? newTeacher.value.career_ids : editTeacher.value.career_ids;
+        const teacherId = mode === 'edit' ? editTeacher.value.id : null;
+        
+        if (!careerIds || careerIds.length === 0) {
+            availableGroups.value = [];
+            return;
+        }
+        
+        const params = { career_ids: careerIds };
+        if (teacherId) {
+            params.teacher_id = teacherId;
+        }
+        
+        const response = await axios.get('/admin/teachers/groups/available', { params });
+        availableGroups.value = response.data;
+    } catch (error) {
+        console.error('Error cargando grupos:', error);
+        availableGroups.value = [];
+    } finally {
+        loadingGroups.value = false;
+    }
+};
+
+// Watch para cargar grupos cuando cambian las carreras (crear)
+watch(() => newTeacher.value.career_ids, () => {
+    loadAvailableGroups('new');
+    // Limpiar grupos seleccionados si ya no están disponibles
+    if (newTeacher.value.group_ids && newTeacher.value.group_ids.length > 0) {
+        const validGroupIds = availableGroups.value.map(g => g.id);
+        newTeacher.value.group_ids = newTeacher.value.group_ids.filter(id => validGroupIds.includes(id));
+    }
+});
+
+// Watch para cargar grupos cuando cambian las carreras (editar)
+watch(() => editTeacher.value.career_ids, () => {
+    if (editTeacher.value.id) {
+        loadAvailableGroups('edit');
+        // Limpiar grupos seleccionados si ya no están disponibles
+        if (editTeacher.value.group_ids && editTeacher.value.group_ids.length > 0) {
+            const validGroupIds = availableGroups.value.map(g => g.id);
+            editTeacher.value.group_ids = editTeacher.value.group_ids.filter(id => validGroupIds.includes(id));
+        }
+    }
+});
 
 // Filtrar maestros
 const filteredTeachers = () => {
@@ -198,6 +346,8 @@ const filteredTeachers = () => {
 };
 
 onMounted(() => {
+    loadAreas();
+    loadCareers();
     loadTeachers();
 });
 </script>
@@ -283,6 +433,12 @@ onMounted(() => {
                                     <th :class="['font-body px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide', darkMode ? 'text-gray-300' : 'text-gray-500']">
                                         Correo Institucional
                                     </th>
+                                    <th :class="['font-body px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide', darkMode ? 'text-gray-300' : 'text-gray-500']">
+                                        Sectores/Carreras
+                                    </th>
+                                    <th :class="['font-body px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide', darkMode ? 'text-gray-300' : 'text-gray-500']">
+                                        Tutor
+                                    </th>
                                     <th :class="['font-body px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide', darkMode ? 'text-gray-300' : 'text-gray-500']">
                                         Acciones
                                     </th>
@@ -299,6 +455,48 @@ onMounted(() => {
                                     </td>
                                     <td :class="['px-6 py-4 whitespace-nowrap text-sm', darkMode ? 'text-blue-400' : 'text-blue-600']">
                                         {{ teacher.email }}
+                                    </td>
+                                    <td :class="['px-6 py-4 text-sm', darkMode ? 'text-gray-300' : 'text-gray-700']">
+                                        <div v-if="teacher.areas && teacher.areas.length > 0" class="mb-2">
+                                            <span class="font-semibold">Sectores:</span>
+                                            <span class="ml-2">{{ teacher.areas.map(a => a.nombre).join(', ') }}</span>
+                                        </div>
+                                        <div v-if="teacher.careers && teacher.careers.length > 0">
+                                            <span class="font-semibold">Carreras:</span>
+                                            <span class="ml-2">{{ teacher.careers.map(c => c.nombre).join(', ') }}</span>
+                                        </div>
+                                        <span v-if="(!teacher.areas || teacher.areas.length === 0) && (!teacher.careers || teacher.careers.length === 0)" class="text-gray-500 italic">
+                                            Sin sectores/carreras asignados
+                                        </span>
+                                    </td>
+                                    <td :class="['px-6 py-4 whitespace-nowrap text-center text-sm']">
+                                        <span
+                                            v-if="teacher.is_tutor || (teacher.tutor_groups && teacher.tutor_groups.length > 0)"
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold',
+                                                darkMode ? 'bg-green-600 text-white' : 'bg-green-100 text-green-800'
+                                            ]"
+                                        >
+                                            Sí
+                                        </span>
+                                        <span
+                                            v-else
+                                            :class="[
+                                                'inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold',
+                                                darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'
+                                            ]"
+                                        >
+                                            No
+                                        </span>
+                                        <div
+                                            v-if="teacher.tutor_groups && teacher.tutor_groups.length > 0"
+                                            class="mt-1 text-xs"
+                                            :class="darkMode ? 'text-gray-400' : 'text-gray-600'"
+                                        >
+                                            <div v-for="group in teacher.tutor_groups" :key="group.id">
+                                                {{ group.grado }}° {{ group.grupo }} - {{ group.carrera }}
+                                            </div>
+                                        </div>
                                     </td>
                                     <td :class="['px-6 py-4 whitespace-nowrap text-center text-sm font-medium']">
                                         <div class="flex items-center justify-center space-x-2">
@@ -330,7 +528,7 @@ onMounted(() => {
                     class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
                     @click.self="showAddModal = false"
                 >
-                    <div :class="['rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto', darkMode ? 'bg-gray-800' : 'bg-white']">
+                    <div :class="['rounded-2xl shadow-2xl max-w-3xl w-full', darkMode ? 'bg-gray-800' : 'bg-white']" style="max-height: calc(100vh - 1rem); min-height: auto; overflow-y: auto;">
                         <div class="p-6 border-b" :class="darkMode ? 'border-gray-700' : 'border-gray-200'">
                             <div class="flex items-center justify-between">
                                 <h2 :class="['font-heading text-2xl font-bold', darkMode ? 'text-white' : 'text-gray-900']">
@@ -429,6 +627,63 @@ onMounted(() => {
                                         placeholder="••••••••"
                                     >
                                 </div>
+
+                                <!-- Sectores/Áreas -->
+                                <div class="md:col-span-2">
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                        Sectores/Áreas
+                                        <span class="font-normal text-xs text-gray-500 ml-2">(Puede seleccionar múltiples)</span>
+                                    </label>
+                                    <MultiSelect
+                                        v-model="newTeacher.area_ids"
+                                        :options="areas && areas.length > 0 ? areas.map(a => ({ id: a.id, name: a.nombre })) : []"
+                                        placeholder="Seleccionar sectores/áreas..."
+                                        :disabled="!areas || areas.length === 0"
+                                    />
+                                </div>
+
+                                <!-- Carreras -->
+                                <div class="md:col-span-2">
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                        Carreras
+                                        <span class="font-normal text-xs text-gray-500 ml-2">(Puede seleccionar múltiples)</span>
+                                    </label>
+                                    <MultiSelect
+                                        v-model="newTeacher.career_ids"
+                                        :options="filteredCareersForNew.map(c => ({ id: c.id, name: c.nombre }))"
+                                        :placeholder="newTeacher.area_ids.length === 0 ? 'Primero selecciona un sector/área' : 'Seleccionar carreras...'"
+                                        :disabled="!newTeacher.area_ids || newTeacher.area_ids.length === 0 || filteredCareersForNew.length === 0"
+                                    />
+                                    <p v-if="newTeacher.area_ids.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        Selecciona primero un sector/área para ver las carreras disponibles
+                                    </p>
+                                    <p v-else-if="filteredCareersForNew.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        No hay carreras disponibles para los sectores seleccionados
+                                    </p>
+                                </div>
+
+                                <!-- Grupos como Tutor -->
+                                <div class="md:col-span-2">
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                        Grupos como Tutor
+                                        <span class="font-normal text-xs text-gray-500 ml-2">(Puede seleccionar múltiples)</span>
+                                    </label>
+                                    <MultiSelect
+                                        v-model="newTeacher.group_ids"
+                                        :options="availableGroups"
+                                        :placeholder="newTeacher.career_ids.length === 0 ? 'Primero selecciona carreras' : (loadingGroups ? 'Cargando grupos...' : 'Seleccionar grupos...')"
+                                        :disabled="!newTeacher.career_ids || newTeacher.career_ids.length === 0 || loadingGroups || availableGroups.length === 0"
+                                    />
+                                    <p v-if="newTeacher.career_ids.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        Selecciona primero las carreras que imparte para ver los grupos disponibles
+                                    </p>
+                                    <p v-else-if="loadingGroups" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        Cargando grupos...
+                                    </p>
+                                    <p v-else-if="availableGroups.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        No hay grupos disponibles para las carreras seleccionadas
+                                    </p>
+                                </div>
                             </div>
 
                             <div class="mt-8 flex justify-end space-x-4">
@@ -455,7 +710,7 @@ onMounted(() => {
                     class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
                     @click.self="showEditModal = false"
                 >
-                    <div :class="['rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto', darkMode ? 'bg-gray-800' : 'bg-white']">
+                    <div :class="['rounded-2xl shadow-2xl max-w-3xl w-full', darkMode ? 'bg-gray-800' : 'bg-white']" style="max-height: calc(100vh - 1rem); min-height: auto; overflow-y: auto;">
                         <div class="p-6 border-b" :class="darkMode ? 'border-gray-700' : 'border-gray-200'">
                             <div class="flex items-center justify-between">
                                 <h2 :class="['font-heading text-2xl font-bold', darkMode ? 'text-white' : 'text-gray-900']">
@@ -520,6 +775,63 @@ onMounted(() => {
                                     >
                                     <p class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
                                         Debe terminar en @utmetropolitana.edu.mx
+                                    </p>
+                                </div>
+
+                                <!-- Sectores/Áreas -->
+                                <div class="md:col-span-2">
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                        Sectores/Áreas
+                                        <span class="font-normal text-xs text-gray-500 ml-2">(Puede seleccionar múltiples)</span>
+                                    </label>
+                                    <MultiSelect
+                                        v-model="editTeacher.area_ids"
+                                        :options="areas && areas.length > 0 ? areas.map(a => ({ id: a.id, name: a.nombre })) : []"
+                                        placeholder="Seleccionar sectores/áreas..."
+                                        :disabled="!areas || areas.length === 0"
+                                    />
+                                </div>
+
+                                <!-- Carreras -->
+                                <div class="md:col-span-2">
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                        Carreras
+                                        <span class="font-normal text-xs text-gray-500 ml-2">(Puede seleccionar múltiples)</span>
+                                    </label>
+                                    <MultiSelect
+                                        v-model="editTeacher.career_ids"
+                                        :options="filteredCareersForEdit.map(c => ({ id: c.id, name: c.nombre }))"
+                                        :placeholder="editTeacher.area_ids.length === 0 ? 'Primero selecciona un sector/área' : 'Seleccionar carreras...'"
+                                        :disabled="!editTeacher.area_ids || editTeacher.area_ids.length === 0 || filteredCareersForEdit.length === 0"
+                                    />
+                                    <p v-if="editTeacher.area_ids.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        Selecciona primero un sector/área para ver las carreras disponibles
+                                    </p>
+                                    <p v-else-if="filteredCareersForEdit.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        No hay carreras disponibles para los sectores seleccionados
+                                    </p>
+                                </div>
+
+                                <!-- Grupos como Tutor -->
+                                <div class="md:col-span-2">
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                        Grupos como Tutor
+                                        <span class="font-normal text-xs text-gray-500 ml-2">(Puede seleccionar múltiples)</span>
+                                    </label>
+                                    <MultiSelect
+                                        v-model="editTeacher.group_ids"
+                                        :options="availableGroups"
+                                        :placeholder="editTeacher.career_ids.length === 0 ? 'Primero selecciona carreras' : (loadingGroups ? 'Cargando grupos...' : 'Seleccionar grupos...')"
+                                        :disabled="!editTeacher.career_ids || editTeacher.career_ids.length === 0 || loadingGroups || availableGroups.length === 0"
+                                    />
+                                    <p v-if="editTeacher.career_ids.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        Selecciona primero las carreras que imparte para ver los grupos disponibles
+                                    </p>
+                                    <p v-else-if="loadingGroups" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        Cargando grupos...
+                                    </p>
+                                    <p v-else-if="availableGroups.length === 0" class="font-body mt-1 text-xs" :class="darkMode ? 'text-gray-400' : 'text-gray-500'">
+                                        No hay grupos disponibles para las carreras seleccionadas
                                     </p>
                                 </div>
                             </div>

@@ -1,8 +1,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { useDarkMode } from '@/composables/useDarkMode.js';
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
 // Heroicons - Outline version
 import { 
@@ -24,6 +24,10 @@ const props = defineProps({
 // Usar el composable de modo oscuro
 const { darkMode } = useDarkMode();
 
+// Obtener el periodo activo desde las props compartidas
+const page = usePage();
+const currentPeriod = computed(() => page.props.currentPeriod);
+
 // Estados
 const loading = ref(true);
 const showEditModal = ref(false);
@@ -42,8 +46,7 @@ const studentData = ref({
     fechaNacimiento: '',
     foto: '/images/profile-placeholder.svg',
     promedio: 0.0,
-    creditos: 0,
-    semestre: '',
+    cuatrimestre: '',
     nivel: ''
 });
 
@@ -75,9 +78,8 @@ const loadStudentData = async () => {
                 : 'No registrada',
             foto: data.student_detail?.foto_perfil || '/images/profile-placeholder.svg',
             promedio: parseFloat(data.student_detail?.promedio_general || 0).toFixed(2),
-            creditos: data.student_detail?.creditos_totales || 0,
-            semestre: getCurrentSemester(),
-            nivel: data.student_detail?.grado || (data.student_detail?.group?.grado ? `${data.student_detail.group.grado}° Semestre` : 'N/A')
+            cuatrimestre: getCurrentCuatrimestre(),
+            nivel: data.student_detail?.grado || (data.student_detail?.group?.grado ? `${data.student_detail.group.grado}° Cuatrimestre` : 'N/A')
         };
 
         // Llenar formulario de edición
@@ -96,14 +98,19 @@ const loadStudentData = async () => {
     }
 };
 
-// Obtener semestre actual (formato: 2024-1)
-const getCurrentSemester = () => {
+// Obtener cuatrimestre actual (formato: 2024-1)
+const getCurrentCuatrimestre = () => {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
-    // Enero-Junio: 1, Julio-Diciembre: 2
-    const semester = month <= 6 ? 1 : 2;
-    return `${year}-${semester}`;
+    // Enero-Abril: 1, Mayo-Agosto: 2, Septiembre-Diciembre: 3
+    let cuatrimestre = 1;
+    if (month >= 5 && month <= 8) {
+        cuatrimestre = 2;
+    } else if (month >= 9) {
+        cuatrimestre = 3;
+    }
+    return `${year}-${cuatrimestre}`;
 };
 
 // Abrir modal de edición
@@ -211,7 +218,7 @@ onMounted(() => {
                             </p>
                         </div>
                         <div :class="['font-body mt-4 md:mt-0 px-4 py-2 rounded-lg inline-block', darkMode ? 'bg-green-600 text-white' : 'bg-green-100 text-green-800']">
-                            <p class="text-sm font-semibold">Semestre Actual: {{ studentData.semestre }}</p>
+                            <p class="text-sm font-semibold">Cuatrimestre Actual: {{ studentData.cuatrimestre }}</p>
                         </div>
                     </div>
                 </div>
@@ -354,19 +361,6 @@ onMounted(() => {
                                         </svg>
                                     </div>
                                 </div>
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p :class="['text-sm', darkMode ? 'text-gray-400' : 'text-gray-600']">Créditos</p>
-                                        <p :class="['text-2xl font-bold', darkMode ? 'text-blue-400' : 'text-blue-600']">
-                                            {{ studentData.creditos }}
-                                        </p>
-                                    </div>
-                                    <div :class="['w-16 h-16 rounded-full flex items-center justify-center', darkMode ? 'bg-blue-500/20' : 'bg-blue-100']">
-                                        <svg class="w-8 h-8" :class="darkMode ? 'text-blue-400' : 'text-blue-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                                        </svg>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -374,25 +368,25 @@ onMounted(() => {
                     <!-- Columna Derecha - Contenido Principal -->
                     <div class="lg:col-span-2 space-y-6">
                         
-                        <!-- Información del Semestre Actual -->
+                        <!-- Información del Cuatrimestre Actual -->
                         <div :class="['rounded-2xl shadow-lg border overflow-hidden', darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200']">
                             <div class="px-6 py-4 bg-gradient-to-r from-green-500 to-green-600">
                                 <h2 :class="['text-xl font-bold text-white']">
-                                    Información del Semestre Actual
+                                    Información del Cuatrimestre Actual
                                 </h2>
                             </div>
                             <div class="p-6">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <p :class="['text-sm mb-1', darkMode ? 'text-gray-400' : 'text-gray-600']">Semestre Académico</p>
+                                        <p :class="['text-sm mb-1', darkMode ? 'text-gray-400' : 'text-gray-600']">Cuatrimestre Académico</p>
                                         <p :class="['text-lg font-semibold', darkMode ? 'text-white' : 'text-gray-900']">
-                                            {{ studentData.semestre }}
+                                            {{ currentPeriod?.code || studentData.cuatrimestre || 'No asignado' }}
                                         </p>
                                     </div>
                                     <div>
                                         <p :class="['text-sm mb-1', darkMode ? 'text-gray-400' : 'text-gray-600']">Periodo</p>
                                         <p :class="['text-lg font-semibold', darkMode ? 'text-white' : 'text-gray-900']">
-                                            Febrero - Junio 2024
+                                            {{ currentPeriod?.name || 'No hay periodo activo' }}
                                         </p>
                                     </div>
                                 </div>

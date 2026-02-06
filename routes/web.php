@@ -12,13 +12,18 @@ use App\Http\Controllers\Admin\RoomController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\CareerController;
 use App\Http\Controllers\Admin\AnnouncementController;
+use App\Http\Controllers\Admin\PeriodController;
 use App\Http\Controllers\Student\DocumentController as StudentDocumentController;
 use App\Http\Controllers\Student\ProfileController as StudentProfileController;
 use App\Http\Controllers\Student\ScheduleController as StudentScheduleController;
 use App\Http\Controllers\Teacher\AttendanceController as TeacherAttendanceController;
 use App\Http\Controllers\Teacher\CourseController as TeacherCourseController;
 use App\Http\Controllers\Teacher\TutorController;
+use App\Http\Controllers\Teacher\GradeController as TeacherGradeController;
+use App\Http\Controllers\Teacher\ActividadController as TeacherActividadController;
 use App\Http\Controllers\Student\CourseController as StudentCourseController;
+use App\Http\Controllers\Student\GradeController as StudentGradeController;
+use App\Http\Controllers\Student\JustificationController as StudentJustificationController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -95,6 +100,11 @@ Route::get('/admin/avisos/crear', function () {
     return Inertia::render('Admin/Announcements/CreateAnnouncement');
 })->middleware(['auth', 'verified', 'role:admin'])->name('admin.avisos.create');
 
+// Gestión de Periodos Académicos - Vista
+Route::get('/admin/periodos', function () {
+    return Inertia::render('Admin/Periods/Index');
+})->middleware(['auth', 'verified', 'role:admin'])->name('admin.periodos.index');
+
 // Dashboard para Maestros
 Route::get('/dashboard-maestro', function () {
     return Inertia::render('DashboardMaestro');
@@ -134,6 +144,7 @@ Route::middleware(['auth', 'verified', 'role:alumno'])->prefix('student')->name(
     Route::get('profile', [StudentProfileController::class, 'show'])->name('profile.show');
     Route::put('profile/personal-info', [StudentProfileController::class, 'updatePersonalInfo'])->name('profile.update-personal');
     Route::post('profile/photo', [StudentProfileController::class, 'updateProfilePhoto'])->name('profile.update-photo');
+    Route::get('profile/academic-history', [StudentProfileController::class, 'getAcademicHistory'])->name('profile.academic-history');
     
     // Rutas para horario del estudiante
     Route::get('schedule', [StudentScheduleController::class, 'show'])->name('schedule.show');
@@ -141,6 +152,12 @@ Route::middleware(['auth', 'verified', 'role:alumno'])->prefix('student')->name(
     // Rutas para cursos del estudiante
     Route::get('courses', [StudentCourseController::class, 'index'])->name('courses.index');
     Route::get('courses/{course}', [StudentCourseController::class, 'show'])->name('courses.show');
+    
+    // Rutas para calificaciones del estudiante
+    Route::get('grades', [StudentGradeController::class, 'index'])->name('grades.index');
+    
+    // Rutas para justificaciones
+    Route::post('justifications', [StudentJustificationController::class, 'store'])->name('justifications.store');
 });
 
 // Rutas para MAESTROS
@@ -159,6 +176,11 @@ Route::middleware(['auth', 'verified', 'role:maestro'])->group(function () {
     Route::get('/maestros/cursos', function () {
         return Inertia::render('Maestros/Courses/Index');
     })->name('maestros.cursos.index');
+
+    // Gestión de Calificaciones
+    Route::get('/maestros/calificaciones', function () {
+        return Inertia::render('Maestros/Calificaciones');
+    })->name('maestros.calificaciones');
 });
 
 // Rutas API para maestros
@@ -168,6 +190,7 @@ Route::middleware(['auth', 'verified', 'role:maestro'])->prefix('teacher')->name
     Route::get('students', [TeacherAttendanceController::class, 'getStudents'])->name('students');
     Route::post('attendances', [TeacherAttendanceController::class, 'store'])->name('attendances.store');
     Route::get('attendances', [TeacherAttendanceController::class, 'getAttendances'])->name('attendances.get');
+    Route::put('attendances/{id}', [TeacherAttendanceController::class, 'updateAttendance'])->name('attendances.update');
     Route::get('attendances/history/student', [TeacherAttendanceController::class, 'getStudentHistory'])->name('attendances.history.student');
     Route::get('attendances/history/all', [TeacherAttendanceController::class, 'getAllStudentsHistory'])->name('attendances.history.all');
     
@@ -183,6 +206,21 @@ Route::middleware(['auth', 'verified', 'role:maestro'])->prefix('teacher')->name
     Route::get('tutor/dashboard', [TutorController::class, 'dashboard'])->name('tutor.dashboard');
     Route::post('tutor/announcements/{announcement}/forward', [TutorController::class, 'forward'])->name('tutor.announcements.forward');
     Route::post('tutor/announcements/{announcement}/read', [TutorController::class, 'markAsRead'])->name('tutor.announcements.read');
+    
+    // Rutas para calificaciones (las específicas deben ir ANTES de las genéricas)
+    Route::get('grades/academic-loads', [TeacherGradeController::class, 'getAcademicLoads'])->name('grades.academic-loads');
+    Route::get('grades/attendance-stats', [TeacherGradeController::class, 'getAttendanceStats'])->name('grades.attendance-stats');
+    Route::post('grades/confirm', [TeacherGradeController::class, 'confirm'])->name('grades.confirm');
+    Route::get('grades', [TeacherGradeController::class, 'index'])->name('grades.index');
+    Route::post('grades', [TeacherGradeController::class, 'store'])->name('grades.store');
+    
+    // Rutas para actividades
+    Route::get('activities', [TeacherActividadController::class, 'index'])->name('activities.index');
+    Route::post('activities', [TeacherActividadController::class, 'store'])->name('activities.store');
+    Route::put('activities/{id}', [TeacherActividadController::class, 'update'])->name('activities.update');
+    Route::delete('activities/{id}', [TeacherActividadController::class, 'destroy'])->name('activities.destroy');
+    Route::post('activities/calificar', [TeacherActividadController::class, 'calificarEntrega'])->name('activities.calificar');
+    Route::get('activities/{id}/entregas', [TeacherActividadController::class, 'getEntregas'])->name('activities.entregas');
 });
 
 Route::middleware('auth')->group(function () {
@@ -206,6 +244,10 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('teachers/{teacher}', [TeacherController::class, 'show'])->name('teachers.show');
     Route::put('teachers/{teacher}', [TeacherController::class, 'update'])->name('teachers.update');
     Route::delete('teachers/{teacher}', [TeacherController::class, 'destroy'])->name('teachers.destroy');
+    Route::get('teachers/areas/list', [TeacherController::class, 'getAreas'])->name('teachers.areas');
+    Route::get('teachers/careers/list', [TeacherController::class, 'getCareers'])->name('teachers.careers');
+    Route::get('teachers/careers/by-area', [TeacherController::class, 'getCareersByArea'])->name('teachers.careers.by-area');
+    Route::get('teachers/groups/available', [TeacherController::class, 'getAvailableGroups'])->name('teachers.groups.available');
     
     // Gestión de Horarios
     Route::get('schedules', [ScheduleController::class, 'index'])->name('schedules.index');
@@ -291,6 +333,12 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
     Route::get('announcements/{announcement}', [AnnouncementController::class, 'show'])->name('announcements.show');
     Route::get('announcements/teachers/list', [AnnouncementController::class, 'getTeachers'])->name('announcements.teachers');
     Route::get('announcements/tutors/list', [AnnouncementController::class, 'getTutors'])->name('announcements.tutors');
+    
+    // Gestión de Periodos Académicos
+    Route::get('periods', [PeriodController::class, 'index'])->name('periods.index');
+    Route::post('periods', [PeriodController::class, 'store'])->name('periods.store');
+    Route::post('periods/{id}/toggle-active', [PeriodController::class, 'toggleActive'])->name('periods.toggle-active');
+    Route::post('periods/{id}/close', [PeriodController::class, 'closePeriod'])->name('periods.close');
 });
 
 require __DIR__.'/auth.php';

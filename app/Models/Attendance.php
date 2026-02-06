@@ -13,14 +13,16 @@ class Attendance extends Model
         'student_id',
         'schedule_id',
         'fecha',
-        'presente',
-        'observaciones',
+        'unidad',
+        'estado',
+        'presente', // Para compatibilidad con estructura antigua
+        'observaciones', // Columna real en la base de datos
         'teacher_id',
     ];
 
     protected $casts = [
         'fecha' => 'date',
-        'presente' => 'boolean',
+        'unidad' => 'integer',
     ];
 
     /**
@@ -45,6 +47,14 @@ class Attendance extends Model
     public function teacher()
     {
         return $this->belongsTo(User::class, 'teacher_id');
+    }
+
+    /**
+     * Relación con justificaciones
+     */
+    public function justificacion()
+    {
+        return $this->hasOne(Justificacion::class, 'attendance_id');
     }
 }
 

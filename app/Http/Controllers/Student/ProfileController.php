@@ -201,5 +201,154 @@ class ProfileController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Obtener el historial académico del estudiante autenticado
+     */
+    public function getAcademicHistory()
+    {
+        $user = Auth::user();
+        $studentDetail = $user->studentDetail;
+        
+        if (!$studentDetail) {
+            return response()->json([
+                'message' => 'No se encontraron detalles del estudiante'
+            ], 404);
+        }
+
+        $group = $studentDetail->group;
+        
+        // Obtener las materias del grupo del estudiante (carga académica) con calificaciones
+        $academicLoads = [];
+        if ($group) {
+            // Obtener inscripciones del estudiante con calificaciones
+            $inscripciones = \App\Models\Inscripcion::where('student_id', $user->id)
+                ->with(['academicLoad.subject', 'calificacionesDetalle'])
+                ->get()
+                ->keyBy('academic_load_id');
+
+            // Obtener el periodo académico activo
+            $activePeriod = \App\Models\AcademicPeriod::active()->first();
+            
+            $query = \App\Models\AcademicLoad::where('group_id', $group->id);
+            
+            // Filtrar por periodo activo si existe
+            if ($activePeriod) {
+                $query->where('academic_period_id', $activePeriod->id);
+            }
+            
+            $academicLoads = $query->with('subject')
+                ->get()
+                ->map(function ($load) use ($inscripciones, $user) {
+                    $inscripcion = $inscripciones->get($load->id);
+                    
+                    // Obtener promedio final de la inscripción (promedio de las 3 unidades)
+                    $calificacionFinal = null;
+                    $porcentajeAsistencia = 0;
+                    
+                    // Obtener calificaciones por unidad
+                    $unidades = [];
+                    $calificacionFinal = null;
+                    $porcentajeAsistencia = 0;
+                    
+                    if ($inscripcion) {
+                        // Obtener calificaciones de cada unidad
+                        for ($unidad = 1; $unidad <= 3; $unidad++) {
+                            $calificacionUnidad = $inscripcion->calificacionesDetalle()
+                                ->where('unidad', $unidad)
+                                ->whereNotNull('promedio_unidad')
+                                ->first();
+                            
+                            $calificacionUnidadValue = $calificacionUnidad ? (float) $calificacionUnidad->promedio_unidad : null;
+                            
+                            // Calcular porcentaje de asistencia por unidad
+                            $porcentajeAsistenciaUnidad = 0;
+                            try {
+                                $calificacionService = app(\App\Services\CalificacionService::class);
+                                $porcentajeAsistenciaUnidad = $calificacionService->calcularPorcentajeAsistencia(
+                                    $user->id,
+                                    $load->id,
+                                    $unidad
+                                );
+                            } catch (\Exception $e) {
+                                \Log::warning('Error calculando asistencia unidad ' . $unidad . ': ' . $e->getMessage());
+                                $porcentajeAsistenciaUnidad = 100; // Por defecto 100%
+                            }
+                            
+                            $unidades[$unidad] = [
+                                'calificacion' => $calificacionUnidadValue,
+                                'asistencia' => round($porcentajeAsistenciaUnidad, 1),
+                            ];
+                            
+                            // Acumular asistencias para promedio general
+                            $asistenciasPorUnidad[] = $porcentajeAsistenciaUnidad;
+                        }
+                        
+                        if (!empty($asistenciasPorUnidad)) {
+                            $porcentajeAsistencia = round(array_sum($asistenciasPorUnidad) / count($asistenciasPorUnidad), 1);
+                        }
+                        
+                        // Calcular promedio final correctamente (promedio de todas las unidades con calificación)
+                        $calificaciones = $inscripcion->calificacionesDetalle()
+                            ->whereNotNull('promedio_unidad')
+                            ->get();
+                        
+                        if ($calificaciones->isNotEmpty()) {
+                            $suma = $calificaciones->sum('promedio_unidad');
+                            $calificacionFinal = round($suma / $calificaciones->count(), 2);
+                        }
+                    }
+                    
+                    return [
+                        'id' => $load->id,
+                        'subject_id' => $load->subject_id,
+                        'materia' => $load->subject->nombre ?? 'Materia no encontrada',
+                        'codigo' => $load->subject->codigo ?? '',
+                        'teacher_name' => $load->teacher_name,
+                        'calificacion' => $calificacionFinal,
+                        'asistencia' => $porcentajeAsistencia,
+                        'unidades' => $unidades, // Calificaciones por unidad (U1, U2, U3)
+                    ];
+                });
+        }
+
+        // Calcular cuatrimestre actual
+        $now = now();
+        $year = $now->year;
+        $month = $now->month;
+        $cuatrimestre = 1;
+        if ($month >= 5 && $month <= 8) {
+            $cuatrimestre = 2;
+        } else if ($month >= 9) {
+            $cuatrimestre = 3;
+        }
+        $cuatrimestreActual = "{$year}-{$cuatrimestre}";
+
+        // Calcular avance de carrera (basado en el grado)
+        $avanceCarrera = 0;
+        if ($studentDetail->grado) {
+            // Asumiendo que el grado es un número (ej: "4" para 4to cuatrimestre)
+            $gradoNum = (int) $studentDetail->grado;
+            // Asumiendo que una carrera tiene aproximadamente 12 cuatrimestres (3 años)
+            $avanceCarrera = min(100, round(($gradoNum / 12) * 100));
+        }
+
+        return response()->json([
+            'student_info' => [
+                'nombre' => $user->name,
+                'matricula' => $studentDetail->matricula,
+                'carrera' => $studentDetail->carrera,
+                'cuatrimestreActual' => $studentDetail->grado ? "{$studentDetail->grado}° Cuatrimestre" : 'No asignado',
+                'promedioGeneral' => $studentDetail->promedio_general ?? 0.00,
+                'avanceCarrera' => $avanceCarrera,
+            ],
+            'current_cuatrimestre' => [
+                'periodo' => $cuatrimestreActual,
+                'materias' => $academicLoads,
+            ],
+            // Preparado para historial completo cuando exista el sistema de calificaciones
+            'historial' => [], // Se llenará cuando existan calificaciones históricas
+        ]);
+    }
 }
 

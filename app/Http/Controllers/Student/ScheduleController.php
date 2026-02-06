@@ -40,9 +40,19 @@ class ScheduleController extends Controller
             ]);
         }
 
-        // Buscar horarios del grupo
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        // Buscar horarios del grupo del periodo activo
         $schedules = Schedule::where('carrera', $carrera)
             ->where('grupo', $grupo)
+            ->where('academic_period_id', $activePeriod->id)
             ->orderBy('dia_semana')
             ->orderBy('hora_inicio')
             ->get();

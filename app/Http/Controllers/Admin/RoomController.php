@@ -127,11 +127,21 @@ class RoomController extends Controller
             'building_id' => $validated['building_id'] ?? null,
         ]);
 
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
         // Normalizar el día de la semana para comparación (primera letra mayúscula)
         $normalizedDay = ucfirst(strtolower($validated['day']));
         
-        // Obtener todos los horarios del día para debugging
+        // Obtener todos los horarios del día para debugging (solo del periodo activo)
         $allSchedulesForDay = \App\Models\Schedule::where('dia_semana', $normalizedDay)
+            ->where('academic_period_id', $activePeriod->id)
             ->get(['id', 'aula', 'hora_inicio', 'hora_fin', 'materia', 'grupo']);
         
         // Obtener códigos de salones ocupados en ese horario
@@ -141,8 +151,9 @@ class RoomController extends Controller
         $startTime = $validated['start_time'];
         $endTime = $validated['end_time'];
         
-        // Obtener todos los horarios del día y filtrar en PHP para mayor compatibilidad
+        // Obtener todos los horarios del día y filtrar en PHP para mayor compatibilidad (solo del periodo activo)
         $schedulesForDay = \App\Models\Schedule::where('dia_semana', $normalizedDay)
+            ->where('academic_period_id', $activePeriod->id)
             ->when($request->has('exclude_schedule_id') && $request->exclude_schedule_id, function($q) use ($request) {
                 $q->where('id', '!=', $request->exclude_schedule_id);
             })

@@ -117,10 +117,19 @@ class User extends Authenticatable
 
     /**
      * Relación con el grupo del cual es tutor (un maestro puede ser tutor de un grupo)
+     * @deprecated Usar tutoredGroups() en su lugar
      */
     public function tutoredGroup()
     {
         return $this->hasOne(Group::class, 'tutor_id');
+    }
+
+    /**
+     * Relación con los grupos de los cuales es tutor (un maestro puede ser tutor de varios grupos)
+     */
+    public function tutoredGroups()
+    {
+        return $this->hasMany(Group::class, 'tutor_id');
     }
 
     /**
@@ -147,5 +156,46 @@ class User extends Authenticatable
     public function groupPosts()
     {
         return $this->hasMany(GroupPost::class, 'posted_by');
+    }
+
+    /**
+     * Relación con las inscripciones del estudiante
+     */
+    public function inscripciones()
+    {
+        return $this->hasMany(Inscripcion::class, 'student_id');
+    }
+
+    /**
+     * Relación con la inscripción actual (del periodo activo)
+     */
+    public function inscripcionActual()
+    {
+        $activePeriodId = \App\Models\AcademicPeriod::active()->value('id');
+        
+        if (!$activePeriodId) {
+            return $this->hasOne(Inscripcion::class, 'student_id')
+                ->whereRaw('1 = 0'); // Retornar relación vacía si no hay periodo activo
+        }
+        
+        return $this->hasOne(Inscripcion::class, 'student_id')
+            ->where('academic_period_id', $activePeriodId)
+            ->where('status', 'cursando');
+    }
+
+    /**
+     * Relación many-to-many con áreas/sectores (para maestros)
+     */
+    public function areas()
+    {
+        return $this->belongsToMany(Area::class, 'teacher_areas', 'teacher_id', 'area_id');
+    }
+
+    /**
+     * Relación many-to-many con carreras (para maestros)
+     */
+    public function careers()
+    {
+        return $this->belongsToMany(Career::class, 'teacher_careers', 'teacher_id', 'career_id');
     }
 }

@@ -14,7 +14,8 @@ import {
     BookOpenIcon,
     BuildingOfficeIcon,
     CalendarDaysIcon,
-    MegaphoneIcon
+    MegaphoneIcon,
+    CalendarIcon
 } from '@heroicons/vue/24/outline';
 
 // Usar el composable de modo oscuro
@@ -309,6 +310,26 @@ onMounted(() => {
                             <div class="flex flex-col gap-2">
                                 <Link :href="route('admin.avisos.create')" :class="['font-body px-4 py-2 rounded-lg font-medium transition-colors', darkMode ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white']">
                                     Crear Aviso
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gestión de Periodos Académicos -->
+                    <div :class="['rounded-xl border hover:shadow-lg transition-all duration-300 group cursor-pointer', darkMode ? 'bg-gray-800 border-gray-600 hover:border-green-500' : 'bg-white border-gray-200 hover:border-green-500']">
+                        <div class="p-8 text-center">
+                            <div :class="['w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4', darkMode ? 'bg-green-500/20 group-hover:bg-green-500/30' : 'bg-green-100 group-hover:bg-green-200']">
+                                <CalendarIcon class="w-8 h-8" :class="darkMode ? 'text-green-400' : 'text-green-600'" />
+                            </div>
+                            <h3 :class="['font-heading text-xl font-bold mb-2', darkMode ? 'text-white' : 'text-gray-900']">
+                                Periodos Académicos
+                            </h3>
+                            <p :class="['font-body text-sm mb-4', darkMode ? 'text-gray-400' : 'text-gray-600']">
+                                Crear y gestionar periodos académicos
+                            </p>
+                            <div class="flex flex-col gap-2">
+                                <Link :href="route('admin.periodos.index')" :class="['font-body px-4 py-2 rounded-lg font-medium transition-colors', darkMode ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white']">
+                                    Ver Periodos
                                 </Link>
                             </div>
                         </div>

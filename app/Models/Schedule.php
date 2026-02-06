@@ -10,6 +10,7 @@ class Schedule extends Model
     use HasFactory;
 
     protected $fillable = [
+        'academic_period_id',
         'carrera',
         'grupo',
         'materia',
@@ -32,5 +33,13 @@ class Schedule extends Model
     public function attendances()
     {
         return $this->hasMany(Attendance::class);
+    }
+
+    /**
+     * Relación con el periodo académico
+     */
+    public function period()
+    {
+        return $this->belongsTo(AcademicPeriod::class, 'academic_period_id');
     }
 }

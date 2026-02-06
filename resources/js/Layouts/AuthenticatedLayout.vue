@@ -194,9 +194,9 @@ const isStudent = computed(() => {
                                         <template #trigger>
                                             <button
                                                 type="button"
-                                                :class="['inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium transition duration-150 ease-in-out focus:outline-none', darkMode ? 'text-gray-300 hover:bg-gray-700 hover:text-white' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900']"
+                                                class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium transition duration-150 ease-in-out focus:outline-none text-gray-700 hover:bg-green-50 hover:text-green-700"
                                             >
-                                                <div :class="['w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold mr-2', darkMode ? 'bg-green-500' : 'bg-green-600']">
+                                                <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold mr-2 bg-green-600">
                                                     {{ $page.props.auth.user.name.charAt(0).toUpperCase() }}
                                                 </div>
                                                 <span class="hidden sm:inline">{{ $page.props.auth.user.name }}</span>
@@ -205,12 +205,9 @@ const isStudent = computed(() => {
                                         </template>
 
                                         <template #content>
-                                            <div :class="['px-4 py-3 border-b', darkMode ? 'border-gray-700' : 'border-gray-200']">
-                                                <p :class="['text-sm font-medium', darkMode ? 'text-white' : 'text-gray-900']">
+                                            <div class="px-4 py-3 border-b border-gray-200">
+                                                <p class="text-sm font-medium text-gray-900">
                                                     {{ $page.props.auth.user.name }}
-                                                </p>
-                                                <p :class="['text-xs mt-1', darkMode ? 'text-gray-400' : 'text-gray-500']">
-                                                    {{ $page.props.auth.user.email }}
                                                 </p>
                                             </div>
                                             

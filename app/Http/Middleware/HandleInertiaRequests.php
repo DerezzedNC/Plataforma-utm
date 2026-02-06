@@ -29,11 +29,23 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        // Obtener el periodo académico activo
+        $currentPeriod = \App\Models\AcademicPeriod::active()->first();
+        
         return [
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user(),
             ],
+            'currentPeriod' => $currentPeriod ? [
+                'id' => $currentPeriod->id,
+                'name' => $currentPeriod->name,
+                'code' => $currentPeriod->code,
+                'start_date' => $currentPeriod->start_date,
+                'end_date' => $currentPeriod->end_date,
+                'is_active' => $currentPeriod->is_active,
+                'is_open_for_grades' => $currentPeriod->is_open_for_grades,
+            ] : null,
         ];
     }
 }

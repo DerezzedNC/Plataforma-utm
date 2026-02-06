@@ -20,7 +20,16 @@ class ScheduleController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Schedule::query();
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        $query = Schedule::where('academic_period_id', $activePeriod->id);
 
         // Filtros opcionales
         if ($request->has('carrera')) {
@@ -32,9 +41,10 @@ class ScheduleController extends Controller
         }
 
         if ($request->has('grado')) {
-            // Buscar grupos con ese grado y carrera
+            // Buscar grupos con ese grado y carrera del periodo activo
             $groups = Group::where('grado', $request->grado)
                 ->where('carrera', $request->carrera ?? '')
+                ->where('academic_period_id', $activePeriod->id)
                 ->pluck('grupo');
             $query->whereIn('grupo', $groups);
         }
@@ -56,8 +66,18 @@ class ScheduleController extends Controller
             'grado' => 'required|integer|min:1|max:5',
         ]);
 
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
         $groups = Group::where('carrera', $validated['carrera'])
             ->where('grado', $validated['grado'])
+            ->where('academic_period_id', $activePeriod->id)
             ->orderBy('grupo')
             ->get();
 
@@ -112,10 +132,20 @@ class ScheduleController extends Controller
             'exclude_id' => 'nullable|integer', // Para excluir el mismo horario al editar
         ]);
 
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
         $conflicts = [];
 
-        // Verificar conflictos con el maestro
+        // Verificar conflictos con el maestro (solo del periodo activo)
         $teacherConflicts = Schedule::where('profesor', $validated['profesor'])
+            ->where('academic_period_id', $activePeriod->id)
             ->where('dia_semana', $validated['dia_semana'])
             ->where(function($q) use ($validated) {
                 $q->whereBetween('hora_inicio', [$validated['hora_inicio'], $validated['hora_fin']])
@@ -134,8 +164,9 @@ class ScheduleController extends Controller
             $conflicts['profesor'] = $teacherConflicts;
         }
 
-        // Verificar conflictos con el aula
+        // Verificar conflictos con el aula (solo del periodo activo)
         $roomConflicts = Schedule::where('aula', $validated['aula'])
+            ->where('academic_period_id', $activePeriod->id)
             ->where('dia_semana', $validated['dia_semana'])
             ->where(function($q) use ($validated) {
                 $q->whereBetween('hora_inicio', [$validated['hora_inicio'], $validated['hora_fin']])
@@ -172,9 +203,18 @@ class ScheduleController extends Controller
 
             // Primero: Verificar en academic_loads si existe
             if (Schema::hasTable('academic_loads')) {
-                $academicLoad = AcademicLoad::where('group_id', $groupModel->id)
-                    ->where('subject_id', $subjectModel->id)
-                    ->first();
+                // Obtener el periodo académico activo
+                $activePeriod = \App\Models\AcademicPeriod::active()->first();
+                
+                $query = AcademicLoad::where('group_id', $groupModel->id)
+                    ->where('subject_id', $subjectModel->id);
+                
+                // Filtrar por periodo activo si existe
+                if ($activePeriod) {
+                    $query->where('academic_period_id', $activePeriod->id);
+                }
+                
+                $academicLoad = $query->first();
 
                 if ($academicLoad && $academicLoad->teacher_name) {
                     \Log::info('Asignación encontrada en academic_loads', [
@@ -265,13 +305,25 @@ class ScheduleController extends Controller
             $validated['tipo'] = 'Teoría';
         }
 
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        $validated['academic_period_id'] = $activePeriod->id;
         $schedule = Schedule::create($validated);
 
         // Actualizar todos los horarios existentes del mismo grupo y materia con el mismo maestro
         // para mantener la consistencia (un solo maestro por materia por grupo)
+        // Solo del periodo activo
         $existingSchedules = Schedule::where('carrera', $validated['carrera'])
             ->where('grupo', $validated['grupo'])
             ->where('materia', $validated['materia'])
+            ->where('academic_period_id', $activePeriod->id)
             ->where('id', '!=', $schedule->id)
             ->where(function($q) use ($validated) {
                 $q->whereNull('profesor')
@@ -297,13 +349,22 @@ class ScheduleController extends Controller
             try {
                 // Verificar si la tabla existe antes de intentar usarla
                 if (Schema::hasTable('academic_loads')) {
+                    // Obtener el periodo académico activo
+                    $activePeriod = \App\Models\AcademicPeriod::active()->first();
+                    
+                    if (!$activePeriod) {
+                        \Log::warning('No hay periodo académico activo al guardar academic_load');
+                    }
+                    
                     $academicLoad = AcademicLoad::updateOrCreate(
                         [
                             'group_id' => $request->group_id,
                             'subject_id' => $request->subject_id,
+                            'academic_period_id' => $activePeriod ? $activePeriod->id : null,
                         ],
                         [
                             'teacher_name' => $validated['profesor'],
+                            'academic_period_id' => $activePeriod ? $activePeriod->id : null,
                         ]
                     );
                     
@@ -355,9 +416,19 @@ class ScheduleController extends Controller
             'horarios.*.tipo' => 'required|string|in:Teoría,Laboratorio,Práctica',
         ]);
 
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
         $schedules = [];
 
         foreach ($validated['horarios'] as $horario) {
+            $horario['academic_period_id'] = $activePeriod->id;
             $schedules[] = Schedule::create($horario);
         }
 
@@ -394,14 +465,19 @@ class ScheduleController extends Controller
 
         // Si se actualizó el maestro, actualizar todos los horarios existentes del mismo grupo y materia
         // para mantener la consistencia (un solo maestro por materia por grupo)
+        // Solo del periodo activo
         if ($request->has('profesor') && $validated['profesor']) {
             $carrera = $validated['carrera'] ?? $scheduleModel->carrera;
             $grupo = $validated['grupo'] ?? $scheduleModel->grupo;
             $materia = $validated['materia'] ?? $scheduleModel->materia;
             
+            // Obtener el periodo académico activo
+            $activePeriod = \App\Models\AcademicPeriod::active()->first();
+            
             $existingSchedules = Schedule::where('carrera', $carrera)
                 ->where('grupo', $grupo)
                 ->where('materia', $materia)
+                ->where('academic_period_id', $activePeriod ? $activePeriod->id : $scheduleModel->academic_period_id)
                 ->where('id', '!=', $scheduleModel->id)
                 ->where(function($q) use ($validated) {
                     $q->whereNull('profesor')
@@ -429,13 +505,22 @@ class ScheduleController extends Controller
             try {
                 // Verificar si la tabla existe antes de intentar usarla
                 if (Schema::hasTable('academic_loads')) {
+                    // Obtener el periodo académico activo
+                    $activePeriod = \App\Models\AcademicPeriod::active()->first();
+                    
+                    if (!$activePeriod) {
+                        \Log::warning('No hay periodo académico activo al actualizar academic_load');
+                    }
+                    
                     $academicLoad = AcademicLoad::updateOrCreate(
                         [
                             'group_id' => $request->group_id,
                             'subject_id' => $request->subject_id,
+                            'academic_period_id' => $activePeriod ? $activePeriod->id : null,
                         ],
                         [
                             'teacher_name' => $validated['profesor'],
+                            'academic_period_id' => $activePeriod ? $activePeriod->id : null,
                         ]
                     );
                     

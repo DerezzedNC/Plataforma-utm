@@ -23,12 +23,18 @@ const selectedSubject = ref(null);
 const subjects = ref([]);
 const loadingSubjects = ref(false);
 
-// Cargar grupos del maestro
+// Cargar grupos del maestro (solo donde imparte materias)
 const loadGroups = async () => {
     try {
         loading.value = true;
         const response = await axios.get('/teacher/groups');
-        groups.value = response.data;
+        // Asegurar que no haya duplicados en el frontend también
+        const uniqueGroups = response.data.filter((group, index, self) => 
+            index === self.findIndex(g => 
+                g.carrera === group.carrera && g.grupo === group.grupo
+            )
+        );
+        groups.value = uniqueGroups;
     } catch (error) {
         console.error('Error cargando grupos:', error);
         alert('Error al cargar los grupos');
@@ -53,7 +59,12 @@ const loadSubjects = async () => {
                 grupo: selectedGroup.value.grupo,
             }
         });
-        subjects.value = response.data;
+        
+        // Eliminar duplicados de materias en el frontend también
+        const uniqueSubjects = response.data.filter((subject, index, self) => 
+            index === self.findIndex(s => s.materia === subject.materia)
+        );
+        subjects.value = uniqueSubjects;
         
         // Si solo hay una materia, seleccionarla automáticamente
         if (subjects.value.length === 1) {

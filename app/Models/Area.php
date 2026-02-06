@@ -22,4 +22,12 @@ class Area extends Model
     {
         return $this->hasMany(Career::class);
     }
+
+    /**
+     * Relación many-to-many con maestros
+     */
+    public function teachers()
+    {
+        return $this->belongsToMany(User::class, 'teacher_areas', 'area_id', 'teacher_id');
+    }
 }

@@ -18,8 +18,18 @@ class TutorController extends Controller
     {
         $user = auth()->user();
 
-        // Obtener el grupo del cual es tutor
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        // Obtener el grupo del cual es tutor del periodo activo
         $group = Group::where('tutor_id', $user->id)
+            ->where('academic_period_id', $activePeriod->id)
             ->with(['students', 'tutor'])
             ->first();
 
@@ -169,5 +179,7 @@ class TutorController extends Controller
         ]);
     }
 }
+
+
 
 

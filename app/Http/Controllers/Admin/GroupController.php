@@ -15,7 +15,17 @@ class GroupController extends Controller
      */
     public function index()
     {
-        $groups = Group::withCount('students')
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        $groups = Group::where('academic_period_id', $activePeriod->id)
+            ->withCount('students')
             ->with('tutor:id,name,email')
             ->orderBy('carrera')
             ->orderBy('grado')
@@ -52,8 +62,18 @@ class GroupController extends Controller
         $carrera = $validated['carrera'];
         $grado = $validated['grado'] ?? null;
 
-        // Obtener todos los grupos existentes para esta carrera
-        $query = Group::where('carrera', $carrera);
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        // Obtener todos los grupos existentes para esta carrera del periodo activo
+        $query = Group::where('carrera', $carrera)
+            ->where('academic_period_id', $activePeriod->id);
         
         if ($grado) {
             $query->where('grado', $grado);
@@ -282,18 +302,29 @@ class GroupController extends Controller
             'grado.max' => 'El grado debe ser entre 1 y 5.',
         ]);
 
-        // Verificar que no exista un grupo con la misma combinación
+        // Obtener el periodo académico activo
+        $activePeriod = \App\Models\AcademicPeriod::active()->first();
+        
+        if (!$activePeriod) {
+            return response()->json([
+                'message' => 'No hay un periodo académico activo. Por favor, contacta al administrador.',
+            ], 422);
+        }
+
+        // Verificar que no exista un grupo con la misma combinación en el periodo activo
         $exists = Group::where('carrera', $validated['carrera'])
             ->where('grado', $validated['grado'])
             ->where('grupo', $validated['grupo'])
+            ->where('academic_period_id', $activePeriod->id)
             ->exists();
 
         if ($exists) {
             return response()->json([
-                'message' => 'Ya existe un grupo con esta combinación de carrera, grado y grupo.'
+                'message' => 'Ya existe un grupo con esta combinación de carrera, grado y grupo en el periodo activo.'
             ], 422);
         }
 
+        $validated['academic_period_id'] = $activePeriod->id;
         $group = Group::create($validated);
 
         return response()->json($group, 201);

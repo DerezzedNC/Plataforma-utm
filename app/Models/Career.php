@@ -38,4 +38,12 @@ class Career extends Model
     {
         return $this->belongsToMany(Course::class, 'course_career');
     }
+
+    /**
+     * Relación many-to-many con maestros
+     */
+    public function teachers()
+    {
+        return $this->belongsToMany(User::class, 'teacher_careers', 'career_id', 'teacher_id');
+    }
 }

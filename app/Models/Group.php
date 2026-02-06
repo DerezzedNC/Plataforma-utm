@@ -10,6 +10,7 @@ class Group extends Model
     use HasFactory;
 
     protected $fillable = [
+        'academic_period_id',
         'carrera',
         'grado',
         'grupo',
@@ -38,5 +39,13 @@ class Group extends Model
     public function posts()
     {
         return $this->hasMany(GroupPost::class);
+    }
+
+    /**
+     * Relación con el periodo académico
+     */
+    public function period()
+    {
+        return $this->belongsTo(AcademicPeriod::class, 'academic_period_id');
     }
 }

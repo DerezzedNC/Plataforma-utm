@@ -10,6 +10,7 @@ class AcademicLoad extends Model
     use HasFactory;
 
     protected $fillable = [
+        'academic_period_id',
         'group_id',
         'subject_id',
         'teacher_name',
@@ -29,6 +30,22 @@ class AcademicLoad extends Model
     public function subject()
     {
         return $this->belongsTo(Subject::class);
+    }
+
+    /**
+     * Relación con el periodo académico
+     */
+    public function period()
+    {
+        return $this->belongsTo(AcademicPeriod::class, 'academic_period_id');
+    }
+
+    /**
+     * Relación con las inscripciones
+     */
+    public function inscripciones()
+    {
+        return $this->hasMany(Inscripcion::class, 'academic_load_id');
     }
 }
 
