@@ -47,6 +47,14 @@ class AcademicLoad extends Model
     {
         return $this->hasMany(Inscripcion::class, 'academic_load_id');
     }
+
+    /**
+     * Relación con las unidades del curso
+     */
+    public function courseUnits()
+    {
+        return $this->hasMany(CourseUnit::class, 'academic_load_id');
+    }
 }
 
 

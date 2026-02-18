@@ -13,25 +13,39 @@ class CalificacionDetalle extends Model
     protected $table = 'calificaciones_detalle';
 
     protected $fillable = [
+        'student_id',
+        'course_unit_id',
+        'saber',
+        'saber_hacer_convivir',
+        'calificacion_final_unidad',
+        // Mantener inscripcion_id para compatibilidad si es necesario
         'inscripcion_id',
-        'unidad',
-        'score_tareas',
-        'score_examen',
-        'score_conducta',
-        'promedio_unidad',
-        'derecho_examen',
     ];
 
     protected $casts = [
-        'score_tareas' => 'decimal:2',
-        'score_examen' => 'decimal:2',
-        'score_conducta' => 'decimal:2',
-        'promedio_unidad' => 'decimal:2',
-        'derecho_examen' => 'boolean',
+        'saber' => 'integer',
+        'saber_hacer_convivir' => 'integer',
+        'calificacion_final_unidad' => 'decimal:2',
     ];
 
     /**
-     * Relación con la inscripción
+     * Relación con el estudiante
+     */
+    public function student()
+    {
+        return $this->belongsTo(User::class, 'student_id');
+    }
+
+    /**
+     * Relación con la unidad del curso
+     */
+    public function courseUnit()
+    {
+        return $this->belongsTo(CourseUnit::class, 'course_unit_id');
+    }
+
+    /**
+     * Relación con la inscripción (mantener para compatibilidad si es necesario)
      */
     public function inscripcion()
     {
@@ -39,40 +53,33 @@ class CalificacionDetalle extends Model
     }
 
     /**
-     * Boot del modelo - calcular promedio_unidad automáticamente
+     * Boot del modelo - calcular calificacion_final_unidad automáticamente
      */
     protected static function boot()
     {
         parent::boot();
 
         static::saving(function ($calificacion) {
-            $calificacion->calcularPromedioUnidad();
+            $calificacion->calcularCalificacionFinal();
         });
     }
 
     /**
-     * Calcular promedio de unidad con ponderación:
-     * - Tareas: 40% (calculado desde actividades)
-     * - Examen: 50% (0-100 puntos)
-     * - Conducta: 10% (0-100 puntos)
-     * 
-     * Nota: Este método ya no se usa automáticamente porque ahora usamos
-     * GradeCalculatorService::recalculateUnitAverage() que maneja todo el cálculo
+     * Calcular la calificación final de la unidad
+     * Modelo 60-40: Saber * 0.6 + Saber Hacer * 0.4
      */
-    public function calcularPromedioUnidad(): void
+    public function calcularCalificacionFinal(): void
     {
-        // Este método se mantiene por compatibilidad pero ahora el cálculo
-        // se hace en GradeCalculatorService::recalculateUnitAverage()
-        // No hacer nada aquí porque el cálculo ya se hace en el servicio
-    }
-
-    /**
-     * Accessor para promedio_unidad con redondeo personalizado
-     * Nota: El redondeo ya se aplica en calcularPromedioUnidad()
-     */
-    public function getPromedioUnidadAttribute($value)
-    {
-        return $value;
+        $saber = $this->saber ?? 0;
+        $saberHacer = $this->saber_hacer_convivir ?? 0;
+        
+        // Calcular con fórmula 60-40: Saber * 0.6 + Saber Hacer * 0.4
+        if ($saber > 0 || $saberHacer > 0) {
+            $calificacionFinal = ($saber * 0.6) + ($saberHacer * 0.4);
+            $this->calificacion_final_unidad = round($calificacionFinal, 2);
+        } else {
+            $this->calificacion_final_unidad = null;
+        }
     }
 }
 

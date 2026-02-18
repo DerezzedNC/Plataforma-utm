@@ -87,20 +87,46 @@ class Inscripcion extends Model
     }
 
     /**
-     * Calcular promedio final basado en las 3 unidades
+     * Calcular promedio final basado en las unidades dinámicas con sus porcentajes
+     * La calificación final se calcula como la suma ponderada de las calificaciones finales
+     * de cada unidad multiplicadas por su porcentaje
      */
     public function calcularPromedioFinal(): float
     {
-        $calificaciones = $this->calificacionesDetalle()
-            ->whereNotNull('promedio_unidad')
-            ->get();
-
-        if ($calificaciones->isEmpty()) {
+        if (!$this->academic_load_id) {
             return 0.00;
         }
 
-        $suma = $calificaciones->sum('promedio_unidad');
-        $promedio = $suma / $calificaciones->count();
+        // Obtener todas las unidades del curso
+        $courseUnits = \App\Models\CourseUnit::where('academic_load_id', $this->academic_load_id)->get();
+        
+        if ($courseUnits->isEmpty()) {
+            return 0.00;
+        }
+
+        $sumaPonderada = 0;
+        $sumaPorcentajes = 0;
+
+        foreach ($courseUnits as $courseUnit) {
+            // Obtener la calificación del estudiante para esta unidad
+            $calificacion = \App\Models\CalificacionDetalle::where('student_id', $this->student_id)
+                ->where('course_unit_id', $courseUnit->id)
+                ->first();
+
+            if ($calificacion && $calificacion->calificacion_final_unidad !== null) {
+                // Calificación final de la unidad (0-100) multiplicada por el porcentaje de la unidad
+                $sumaPonderada += ($calificacion->calificacion_final_unidad * $courseUnit->porcentaje) / 100;
+                $sumaPorcentajes += $courseUnit->porcentaje;
+            }
+        }
+
+        // Si no hay calificaciones, devolver 0
+        if ($sumaPorcentajes == 0) {
+            return 0.00;
+        }
+
+        // El promedio final es la suma ponderada dividida entre 100 (ya que los porcentajes suman 100)
+        $promedio = ($sumaPonderada / $sumaPorcentajes) * 100;
 
         // Aplicar redondeo personalizado usando el trait
         $trait = new class {

@@ -184,12 +184,27 @@ class CalculadoraDePromedios
             );
 
             // Verificar derecho a examen (usar el servicio de calificaciones)
+            // Obtener course_unit_id desde el número de unidad (sistema antiguo)
+            $courseUnit = \App\Models\CourseUnit::where('academic_load_id', $academicLoadId)
+                ->orderBy('id')
+                ->skip($unidad - 1)
+                ->first();
+            
             $calificacionService = app(\App\Services\CalificacionService::class);
-            $tieneDerechoExamen = $calificacionService->tieneDerechoExamen(
-                $studentId,
-                $academicLoadId,
-                $unidad
-            );
+            if ($courseUnit) {
+                $tieneDerechoExamen = $calificacionService->tieneDerechoExamen(
+                    $studentId,
+                    $academicLoadId,
+                    $courseUnit->id
+                );
+            } else {
+                \Log::warning('No se encontró course_unit para unidad numérica en CalculadoraDePromedios', [
+                    'academic_load_id' => $academicLoadId,
+                    'unidad' => $unidad
+                ]);
+                // Si no hay course_unit, asumir que tiene derecho (comportamiento antiguo)
+                $tieneDerechoExamen = true;
+            }
 
             // Si no tiene derecho a examen, el score_examen no cuenta
             if (!$tieneDerechoExamen) {

@@ -209,6 +209,8 @@ Route::middleware(['auth', 'verified', 'role:maestro'])->prefix('teacher')->name
     
     // Rutas para calificaciones (las específicas deben ir ANTES de las genéricas)
     Route::get('grades/academic-loads', [TeacherGradeController::class, 'getAcademicLoads'])->name('grades.academic-loads');
+    Route::get('grades/course-units', [TeacherGradeController::class, 'getCourseUnits'])->name('grades.course-units');
+    Route::post('grades/save-units', [TeacherGradeController::class, 'saveUnits'])->name('grades.save-units');
     Route::get('grades/attendance-stats', [TeacherGradeController::class, 'getAttendanceStats'])->name('grades.attendance-stats');
     Route::post('grades/confirm', [TeacherGradeController::class, 'confirm'])->name('grades.confirm');
     Route::get('grades', [TeacherGradeController::class, 'index'])->name('grades.index');

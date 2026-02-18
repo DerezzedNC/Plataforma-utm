@@ -246,38 +246,54 @@ class ProfileController extends Controller
                     $calificacionFinal = null;
                     $porcentajeAsistencia = 0;
                     
-                    // Obtener calificaciones por unidad
+                    // Obtener calificaciones por unidad (sistema dinámico)
                     $unidades = [];
                     $calificacionFinal = null;
                     $porcentajeAsistencia = 0;
                     
                     if ($inscripcion) {
-                        // Obtener calificaciones de cada unidad
-                        for ($unidad = 1; $unidad <= 3; $unidad++) {
-                            $calificacionUnidad = $inscripcion->calificacionesDetalle()
-                                ->where('unidad', $unidad)
-                                ->whereNotNull('promedio_unidad')
-                                ->first();
+                        // Obtener unidades configuradas para esta materia
+                        $courseUnits = \App\Models\CourseUnit::where('academic_load_id', $load->id)
+                            ->orderBy('id')
+                            ->get();
+                        
+                        // Obtener todas las calificaciones del estudiante para esta materia
+                        $calificacionesDetalle = $inscripcion->calificacionesDetalle()
+                            ->with('courseUnit')
+                            ->whereNotNull('calificacion_final_unidad')
+                            ->get();
+                        
+                        $asistenciasPorUnidad = [];
+                        
+                        // Procesar cada unidad configurada
+                        foreach ($courseUnits as $index => $courseUnit) {
+                            $calificacionUnidad = $calificacionesDetalle->firstWhere('course_unit_id', $courseUnit->id);
                             
-                            $calificacionUnidadValue = $calificacionUnidad ? (float) $calificacionUnidad->promedio_unidad : null;
+                            $calificacionUnidadValue = $calificacionUnidad 
+                                ? (float) $calificacionUnidad->calificacion_final_unidad 
+                                : null;
                             
-                            // Calcular porcentaje de asistencia por unidad
-                            $porcentajeAsistenciaUnidad = 0;
+                            // Calcular porcentaje de asistencia por unidad usando course_unit_id
+                            $porcentajeAsistenciaUnidad = 100; // Por defecto 100%
                             try {
                                 $calificacionService = app(\App\Services\CalificacionService::class);
                                 $porcentajeAsistenciaUnidad = $calificacionService->calcularPorcentajeAsistencia(
                                     $user->id,
                                     $load->id,
-                                    $unidad
+                                    $courseUnit->id // Usar course_unit_id directamente
                                 );
                             } catch (\Exception $e) {
-                                \Log::warning('Error calculando asistencia unidad ' . $unidad . ': ' . $e->getMessage());
+                                \Log::warning('Error calculando asistencia unidad ' . $courseUnit->id . ': ' . $e->getMessage());
                                 $porcentajeAsistenciaUnidad = 100; // Por defecto 100%
                             }
                             
-                            $unidades[$unidad] = [
+                            // Usar U1, U2, U3, U4, etc. como clave principal para consistencia
+                            $unidadKey = 'U' . ($index + 1);
+                            $unidades[$unidadKey] = [
                                 'calificacion' => $calificacionUnidadValue,
                                 'asistencia' => round($porcentajeAsistenciaUnidad, 1),
+                                'porcentaje' => $courseUnit->porcentaje,
+                                'nombre' => $courseUnit->nombre, // Incluir nombre para referencia
                             ];
                             
                             // Acumular asistencias para promedio general
@@ -288,15 +304,8 @@ class ProfileController extends Controller
                             $porcentajeAsistencia = round(array_sum($asistenciasPorUnidad) / count($asistenciasPorUnidad), 1);
                         }
                         
-                        // Calcular promedio final correctamente (promedio de todas las unidades con calificación)
-                        $calificaciones = $inscripcion->calificacionesDetalle()
-                            ->whereNotNull('promedio_unidad')
-                            ->get();
-                        
-                        if ($calificaciones->isNotEmpty()) {
-                            $suma = $calificaciones->sum('promedio_unidad');
-                            $calificacionFinal = round($suma / $calificaciones->count(), 2);
-                        }
+                        // Calcular promedio final usando el método del modelo Inscripcion
+                        $calificacionFinal = $inscripcion->calcularPromedioFinal();
                     }
                     
                     return [

@@ -14,6 +14,7 @@ class Attendance extends Model
         'schedule_id',
         'fecha',
         'unidad',
+        'course_unit_id',
         'estado',
         'presente', // Para compatibilidad con estructura antigua
         'observaciones', // Columna real en la base de datos
@@ -55,6 +56,14 @@ class Attendance extends Model
     public function justificacion()
     {
         return $this->hasOne(Justificacion::class, 'attendance_id');
+    }
+
+    /**
+     * Relación con la unidad del curso
+     */
+    public function courseUnit()
+    {
+        return $this->belongsTo(CourseUnit::class);
     }
 }
 

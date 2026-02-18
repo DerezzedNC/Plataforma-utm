@@ -20,7 +20,8 @@ const user = computed(() => page.props.auth.user);
 // Estados reactivos
 const loading = ref(true);
 const cuatrimestreActivo = ref('Todos');
-const unidadActiva = ref('Todos'); // U1, U2, U3, Todos
+const unidadActiva = ref('Todos'); // U1, U2, U3, U4, etc. o Todos
+const unidadesDisponibles = ref(['Todos']); // Lista dinámica de unidades
 
 // Información del estudiante (cargada desde la API)
 const estudianteInfo = ref({
@@ -97,6 +98,26 @@ const loadAcademicHistory = async () => {
             const periodo = data.current_cuatrimestre.periodo;
             const periodoFormateado = formatCuatrimestrePeriodo(periodo);
             
+            // Obtener todas las unidades únicas de todas las materias
+            const unidadesSet = new Set(['Todos']);
+            data.current_cuatrimestre.materias.forEach(m => {
+                if (m.unidades) {
+                    Object.keys(m.unidades).forEach(key => {
+                        // Agregar tanto U1, U2, U3 como nombres de unidades
+                        if (key.startsWith('U') && /^U\d+$/.test(key)) {
+                            unidadesSet.add(key);
+                        }
+                    });
+                }
+            });
+            unidadesDisponibles.value = Array.from(unidadesSet).sort((a, b) => {
+                if (a === 'Todos') return -1;
+                if (b === 'Todos') return 1;
+                const numA = parseInt(a.replace('U', ''));
+                const numB = parseInt(b.replace('U', ''));
+                return numA - numB;
+            });
+            
             // Calcular promedio del cuatrimestre actual
             const materiasConCalificacion = data.current_cuatrimestre.materias.filter(m => m.calificacion !== null);
             let promedio = 0;
@@ -114,7 +135,7 @@ const loadAcademicHistory = async () => {
                     teacher_name: m.teacher_name,
                     calificacion: m.calificacion ? parseFloat(m.calificacion).toFixed(2) : null,
                     asistencia: m.asistencia !== undefined && m.asistencia !== null ? parseFloat(m.asistencia).toFixed(1) : null,
-                    unidades: m.unidades || {} // Calificaciones por unidad (U1, U2, U3)
+                    unidades: m.unidades || {} // Calificaciones por unidad (U1, U2, U3, U4, etc.)
                 }))
             };
             
@@ -188,13 +209,14 @@ const materiasFiltradas = computed(() => {
             return acc;
         }, {});
     } else {
-        // Mostrar calificación de la unidad seleccionada
-        const unidadNum = parseInt(unidadActiva.value.replace('U', ''));
+        // Mostrar calificación de la unidad seleccionada (U1, U2, U3, U4, etc.)
+        const unidadKey = unidadActiva.value; // Ej: "U1", "U2", "U3", "U4"
         return Object.keys(historialAcademico.value).reduce((acc, periodo) => {
             acc[periodo] = {
                 ...historialAcademico.value[periodo],
                 materias: (historialAcademico.value[periodo].materias || []).map(m => {
-                    const unidad = m.unidades && m.unidades[unidadNum];
+                    // Buscar la unidad por clave (U1, U2, U3, etc.)
+                    const unidad = m.unidades && m.unidades[unidadKey];
                     return {
                         ...m,
                         calificacion_mostrar: unidad && unidad.calificacion !== null && unidad.calificacion !== undefined 
@@ -415,10 +437,10 @@ onMounted(() => {
                                     </button>
                                 </div>
 
-                                <!-- Stepper vertical de unidades -->
+                                <!-- Stepper vertical de unidades (dinámico) -->
                                 <div :class="['flex flex-row md:flex-col gap-2 border-l-2 md:border-l-0 md:border-t-2 pl-4 md:pl-0 md:pt-4', darkMode ? 'border-gray-600' : 'border-gray-300']">
                                     <button
-                                        v-for="unidad in ['Todos', 'U1', 'U2', 'U3']"
+                                        v-for="unidad in unidadesDisponibles"
                                         :key="unidad"
                                         @click="unidadActiva = unidad"
                                         :class="[

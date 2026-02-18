@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { useDarkMode } from '@/composables/useDarkMode.js';
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import axios from 'axios';
 // Heroicons - Outline version
 import { 
@@ -34,6 +34,9 @@ const editAttendanceForm = ref({
     estado: 'justificado',
     observaciones: '',
 });
+// Estados para unidades del curso
+const courseUnits = ref([]);
+const selectedUnit = ref(null);
 
 // Obtener parámetros de la URL
 const urlParams = new URLSearchParams(window.location.search);
@@ -59,6 +62,11 @@ const loadStudents = async () => {
         return;
     }
 
+    // Si no hay unidad seleccionada pero hay unidades disponibles, auto-seleccionar la primera
+    if (!selectedUnit.value && courseUnits.value.length > 0) {
+        selectedUnit.value = courseUnits.value[0].id;
+    }
+
     try {
         loading.value = true;
         const response = await axios.get('/teacher/students', {
@@ -66,28 +74,72 @@ const loadStudents = async () => {
                 carrera: carrera,
                 grupo: grupo,
                 schedule_id: scheduleId,
+                course_unit_id: selectedUnit.value || null, // Enviar unidad seleccionada para calcular porcentaje correcto
             }
         });
         
-        // La respuesta siempre debe ser un array
-        if (Array.isArray(response.data)) {
-            // Forzar reactividad: crear un nuevo array para que Vue detecte los cambios
-            alumnos.value = response.data.map(alumno => ({ ...alumno }));
+        // Manejar nueva estructura de respuesta (con students y course_units)
+        if (response.data.students && Array.isArray(response.data.students)) {
+            // Forzar reactividad: crear un nuevo array completamente nuevo para que Vue detecte los cambios
+            const nuevosAlumnos = response.data.students.map(alumno => {
+                // Asegurar que el porcentaje esté en el formato correcto
+                const asistenciaValue = alumno.asistencia || '0%';
+                // Crear un objeto completamente nuevo para forzar reactividad
+                return {
+                    id: alumno.id,
+                    matricula: alumno.matricula,
+                    nombre: alumno.nombre,
+                    asistencia: asistenciaValue, // Ya viene con el % del backend
+                    total_clases: alumno.total_clases || 0,
+                    presentes: alumno.presentes || 0,
+                };
+            });
+            
+            // Asignar el nuevo array completo para forzar la reactividad
+            alumnos.value = nuevosAlumnos;
+            
+            // Cargar unidades del curso
+            if (response.data.course_units && Array.isArray(response.data.course_units)) {
+                courseUnits.value = response.data.course_units;
+                
+                // Auto-seleccionar la primera unidad si hay unidades disponibles
+                if (courseUnits.value.length > 0 && !selectedUnit.value) {
+                    selectedUnit.value = courseUnits.value[0].id;
+                }
+            } else {
+                courseUnits.value = [];
+                selectedUnit.value = null;
+            }
             
             // Log temporal para depuración - mostrar porcentajes actualizados
-            console.log('Alumnos recargados con porcentajes actualizados:', alumnos.value.map(a => ({
-                nombre: a.nombre,
-                porcentaje: a.asistencia,
-                total_clases: a.total_clases,
-                presentes: a.presentes
-            })));
+            console.log('Alumnos recargados con porcentajes actualizados:', {
+                course_unit_id: selectedUnit.value,
+                alumnos: alumnos.value.map(a => ({
+                    id: a.id,
+                    nombre: a.nombre,
+                    asistencia: a.asistencia,
+                    total_clases: a.total_clases,
+                    presentes: a.presentes
+                }))
+            });
+            
+            // Forzar actualización del DOM después de asignar los nuevos valores
+            await nextTick();
+            console.log('DOM actualizado después de nextTick');
             
             if (alumnos.value.length === 0) {
                 alert('No se encontraron estudiantes en este grupo. Verifica que los estudiantes estén asignados al grupo correcto.');
             }
+        } else if (Array.isArray(response.data)) {
+            // Compatibilidad con formato antiguo (solo array de estudiantes)
+            alumnos.value = response.data.map(alumno => ({ ...alumno }));
+            courseUnits.value = [];
+            selectedUnit.value = null;
         } else {
-            // Si la respuesta no es un array, algo salió mal
+            // Si la respuesta no es válida, algo salió mal
             alumnos.value = [];
+            courseUnits.value = [];
+            selectedUnit.value = null;
             console.error('Respuesta inesperada:', response.data);
             throw new Error('Formato de respuesta inesperado');
         }
@@ -120,13 +172,14 @@ const loadStudents = async () => {
 
 // Cargar asistencias de una fecha específica
 const loadAttendances = async () => {
-    if (!scheduleId || !fechaSeleccionada.value) return;
+    if (!scheduleId || !fechaSeleccionada.value || !selectedUnit.value) return;
 
     try {
         const response = await axios.get('/teacher/attendances', {
             params: {
                 schedule_id: scheduleId,
                 fecha: fechaSeleccionada.value,
+                course_unit_id: selectedUnit.value, // Filtrar por unidad seleccionada
             }
         });
         
@@ -150,6 +203,52 @@ watch(fechaSeleccionada, async () => {
     }
 });
 
+// Función para manejar el cambio de unidad desde el select
+const onUnitChange = async () => {
+    if (!selectedUnit.value || !scheduleId) {
+        return;
+    }
+    
+    console.log('Unidad cambiada manualmente:', selectedUnit.value);
+    
+    // Limpiar todas las asistencias cuando cambia la unidad
+    alumnos.value.forEach(alumno => {
+        asistencias.value[alumno.id] = false;
+    });
+    
+    // Recargar estudiantes para actualizar porcentajes de la nueva unidad
+    await loadStudents();
+    
+    // Si hay fecha seleccionada, cargar asistencias de esa unidad y fecha
+    if (fechaSeleccionada.value) {
+        await loadAttendances();
+    }
+};
+
+// Watch para limpiar asistencias y recargar estudiantes cuando cambia la unidad
+watch(selectedUnit, async (newUnit, oldUnit) => {
+    // Solo recargar si realmente cambió la unidad
+    if (newUnit === oldUnit) return;
+    
+    console.log('Unidad cambiada:', { anterior: oldUnit, nueva: newUnit });
+    
+    // Limpiar todas las asistencias cuando cambia la unidad
+    alumnos.value.forEach(alumno => {
+        asistencias.value[alumno.id] = false;
+    });
+    
+    // Recargar estudiantes para actualizar porcentajes de la nueva unidad
+    if (scheduleId && selectedUnit.value) {
+        console.log('Recargando estudiantes con course_unit_id:', selectedUnit.value);
+        await loadStudents();
+        
+        // Si hay fecha seleccionada, cargar asistencias de esa unidad y fecha
+        if (fechaSeleccionada.value) {
+            await loadAttendances();
+        }
+    }
+}, { immediate: false });
+
 
 // Función para obtener color de asistencia histórica
 const getColorAsistencia = (porcentaje) => {
@@ -163,6 +262,11 @@ const getColorAsistencia = (porcentaje) => {
 const guardarAsistencias = async () => {
     if (!scheduleId || !fechaSeleccionada.value) {
         alert('Por favor selecciona una fecha');
+        return;
+    }
+
+    if (!selectedUnit.value) {
+        alert('Por favor selecciona una unidad');
         return;
     }
 
@@ -208,6 +312,7 @@ const guardarAsistencias = async () => {
         const response = await axios.post('/teacher/attendances', {
             schedule_id: parseInt(scheduleId),
             fecha: fechaSeleccionada.value,
+            course_unit_id: selectedUnit.value,
             asistencias: asistenciasData,
         });
 
@@ -219,14 +324,40 @@ const guardarAsistencias = async () => {
         
         alert(message);
         
-        // Guardar las asistencias actuales antes de recargar
+        // Guardar las asistencias actuales y la unidad seleccionada antes de recargar
         const asistenciasActuales = { ...asistencias.value };
+        const unidadSeleccionada = selectedUnit.value;
+        
+        // Verificar que hay una unidad seleccionada antes de recargar
+        if (!unidadSeleccionada) {
+            console.warn('No hay unidad seleccionada, no se puede actualizar el porcentaje');
+            return;
+        }
         
         // Pequeña pausa para asegurar que el servidor haya procesado la actualización
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // Asegurar que la unidad sigue seleccionada antes de recargar
+        if (!selectedUnit.value) {
+            selectedUnit.value = unidadSeleccionada;
+        }
+        
+        console.log('Recargando estudiantes después de guardar asistencia', {
+            course_unit_id: selectedUnit.value,
+            unidad_seleccionada: unidadSeleccionada
+        });
         
         // Recargar la lista completa de alumnos para actualizar porcentajes
+        // Esto recalculará los porcentajes basándose en todas las asistencias de la unidad seleccionada
         await loadStudents();
+        
+        // Log para verificar que los porcentajes se actualizaron
+        console.log('Estudiantes recargados con porcentajes:', alumnos.value.map(a => ({
+            nombre: a.nombre,
+            asistencia: a.asistencia,
+            total_clases: a.total_clases,
+            presentes: a.presentes
+        })));
         
         // Restaurar las asistencias marcadas para la fecha actual
         if (fechaSeleccionada.value) {
@@ -241,6 +372,9 @@ const guardarAsistencias = async () => {
                 }
             });
         }
+        
+        // Forzar actualización del componente para reflejar los nuevos porcentajes
+        await nextTick();
     } catch (error) {
         console.error('Error guardando asistencias:', error);
         const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Error desconocido';
@@ -411,18 +545,42 @@ onMounted(() => {
                     <div :class="['rounded-2xl shadow-xl border p-6 mb-8', darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200']">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
                             
-                            <!-- Selector de Fecha -->
-                            <div>
-                                <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-gray-300' : 'text-gray-700']">
-                                    Fecha de Clase
-                                </label>
-                                <div class="relative">
-                                    <input
-                                        type="date"
-                                        v-model="fechaSeleccionada"
-                                        :class="['font-body w-full px-4 py-3 pl-12 rounded-lg border border-gray-300 transition-all focus:ring-2 focus:ring-blue-500 focus:border-blue-500', darkMode ? 'bg-gray-700 border-gray-600 text-white focus:ring-blue-400' : 'bg-white text-gray-900']"
-                                    />
-                                    <CalendarIcon class="w-5 h-5 absolute left-4 top-1/2 transform -translate-y-1/2" :class="darkMode ? 'text-gray-400' : 'text-gray-500'" />
+                            <!-- Selector de Fecha y Unidad -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-gray-300' : 'text-gray-700']">
+                                        Fecha de Clase
+                                    </label>
+                                    <div class="relative">
+                                        <input
+                                            type="date"
+                                            v-model="fechaSeleccionada"
+                                            :class="['font-body w-full px-4 py-3 pl-12 rounded-lg border border-gray-300 transition-all focus:ring-2 focus:ring-blue-500 focus:border-blue-500', darkMode ? 'bg-gray-700 border-gray-600 text-white focus:ring-blue-400' : 'bg-white text-gray-900']"
+                                        />
+                                        <CalendarIcon class="w-5 h-5 absolute left-4 top-1/2 transform -translate-y-1/2" :class="darkMode ? 'text-gray-400' : 'text-gray-500'" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label :class="['font-body block text-sm font-semibold mb-2', darkMode ? 'text-gray-300' : 'text-gray-700']">
+                                        Unidad
+                                    </label>
+                                    <select
+                                        v-model="selectedUnit"
+                                        @change="onUnitChange"
+                                        :class="['font-body w-full px-4 py-3 rounded-lg border border-gray-300 transition-all focus:ring-2 focus:ring-blue-500 focus:border-blue-500', darkMode ? 'bg-gray-700 border-gray-600 text-white focus:ring-blue-400' : 'bg-white text-gray-900']"
+                                    >
+                                        <option :value="null" disabled>Selecciona una unidad</option>
+                                        <option 
+                                            v-for="unit in courseUnits" 
+                                            :key="unit.id" 
+                                            :value="unit.id"
+                                        >
+                                            {{ unit.nombre }} - {{ unit.porcentaje }}%
+                                        </option>
+                                    </select>
+                                    <p v-if="courseUnits.length === 0" :class="['mt-1 text-xs', darkMode ? 'text-yellow-400' : 'text-yellow-600']">
+                                        No hay unidades configuradas para esta materia
+                                    </p>
                                 </div>
                             </div>
 
@@ -507,7 +665,7 @@ onMounted(() => {
                         <div v-else class="divide-y divide-gray-200 dark:divide-gray-600">
                             <div
                                 v-for="(alumno, index) in alumnos"
-                                :key="alumno.id"
+                                :key="`${alumno.id}-${alumno.asistencia}-${selectedUnit}`"
                                 :class="[
                                     'px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
                                     asistencias[alumno.id] ? (darkMode ? 'bg-green-900/20' : 'bg-green-50') : ''

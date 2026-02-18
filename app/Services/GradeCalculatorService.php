@@ -62,12 +62,27 @@ class GradeCalculatorService
             $scoreConductaAnterior = $calificacion->score_conducta ?? 0.00; // Asegurar que nunca sea null
             
             // Verificar derecho a examen actual
-            $calificacionService = app(\App\Services\CalificacionService::class);
-            $tieneDerechoExamenActual = $calificacionService->tieneDerechoExamen(
-                $inscripcion->student_id,
-                $academicLoadId,
-                $unidad
-            );
+            // Obtener course_unit_id desde el número de unidad (sistema antiguo)
+            $courseUnit = \App\Models\CourseUnit::where('academic_load_id', $academicLoadId)
+                ->orderBy('id')
+                ->skip($unidad - 1)
+                ->first();
+            
+            if (!$courseUnit) {
+                \Log::warning('No se encontró course_unit para unidad numérica', [
+                    'academic_load_id' => $academicLoadId,
+                    'unidad' => $unidad
+                ]);
+                // Si no hay course_unit, asumir que tiene derecho (comportamiento antiguo)
+                $tieneDerechoExamenActual = true;
+            } else {
+                $calificacionService = app(\App\Services\CalificacionService::class);
+                $tieneDerechoExamenActual = $calificacionService->tieneDerechoExamen(
+                    $inscripcion->student_id,
+                    $academicLoadId,
+                    $courseUnit->id
+                );
+            }
             // Usar el derecho a examen actual (puede cambiar según asistencia)
             $derechoExamenAnterior = $tieneDerechoExamenActual;
 
@@ -87,11 +102,13 @@ class GradeCalculatorService
                         'inscripcion_id' => $inscripcionId,
                         'unidad' => $unidad,
                         'score_examen_anterior' => $scoreExamenAnterior,
-                        'porcentaje_asistencia' => $calificacionService->calcularPorcentajeAsistencia(
-                            $inscripcion->student_id,
-                            $academicLoadId,
-                            $unidad
-                        )
+                        'porcentaje_asistencia' => $courseUnit 
+                            ? $calificacionService->calcularPorcentajeAsistencia(
+                                $inscripcion->student_id,
+                                $academicLoadId,
+                                $courseUnit->id
+                            )
+                            : 0
                     ]);
                 }
             } else {
@@ -115,11 +132,13 @@ class GradeCalculatorService
                         'inscripcion_id' => $inscripcionId,
                         'unidad' => $unidad,
                         'score_examen_anterior' => $scoreExamen,
-                        'porcentaje_asistencia' => $calificacionService->calcularPorcentajeAsistencia(
-                            $inscripcion->student_id,
-                            $academicLoadId,
-                            $unidad
-                        )
+                        'porcentaje_asistencia' => $courseUnit 
+                            ? $calificacionService->calcularPorcentajeAsistencia(
+                                $inscripcion->student_id,
+                                $academicLoadId,
+                                $courseUnit->id
+                            )
+                            : 0
                     ]);
                 }
             } else {

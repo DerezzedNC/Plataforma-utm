@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\CalificacionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class GradeController extends Controller
@@ -19,21 +20,44 @@ class GradeController extends Controller
 
     /**
      * Obtener calificaciones de un grupo y materia
+     * Ahora usa course_unit_id en lugar de unidad numérica
+     * También devuelve las unidades configuradas para la materia
      */
     public function index(Request $request)
     {
         try {
             $validated = $request->validate([
                 'academic_load_id' => 'required|exists:academic_loads,id',
-                'unidad' => 'required|integer|in:1,2,3',
+                'course_unit_id' => 'nullable|exists:course_units,id',
             ]);
 
-            $calificaciones = $this->calificacionService->obtenerCalificacionesGrupo(
-                $validated['academic_load_id'],
-                $validated['unidad']
-            );
+            // Obtener todas las unidades configuradas para esta materia
+            $courseUnits = \App\Models\CourseUnit::where('academic_load_id', $validated['academic_load_id'])
+                ->orderBy('nombre')
+                ->get();
 
-            return response()->json($calificaciones->values());
+            // Si se proporciona course_unit_id, obtener calificaciones
+            $calificaciones = collect([]);
+            if ($request->has('course_unit_id') && $validated['course_unit_id']) {
+                // Verificar que la unidad pertenece a esta carga académica
+                $courseUnit = $courseUnits->firstWhere('id', $validated['course_unit_id']);
+                
+                if (!$courseUnit) {
+                    return response()->json([
+                        'message' => 'La unidad seleccionada no pertenece a esta materia.'
+                    ], 404);
+                }
+
+                $calificaciones = $this->calificacionService->obtenerCalificacionesGrupo(
+                    $validated['academic_load_id'],
+                    $validated['course_unit_id']
+                );
+            }
+
+            return response()->json([
+                'course_units' => $courseUnits,
+                'calificaciones' => $calificaciones->values(),
+            ]);
         } catch (\Exception $e) {
             \Log::error('Error en index de calificaciones: ' . $e->getMessage(), [
                 'request' => $request->all(),
@@ -48,66 +72,37 @@ class GradeController extends Controller
 
     /**
      * Guardar o actualizar calificación
-     * Ahora solo se guardan examen y conducta directamente (0-100)
-     * Las tareas se calculan automáticamente desde las actividades
+     * Sistema nuevo: solo se guardan saber y saber_hacer_convivir (0-100)
      */
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'inscripcion_id' => 'required|exists:inscripciones,id',
-            'unidad' => 'required|integer|in:1,2,3',
-            'score_examen' => 'nullable|numeric|min:0|max:100',
-            'score_conducta' => 'nullable|numeric|min:0|max:100',
+            'student_id' => 'required|exists:users,id',
+            'course_unit_id' => 'required|exists:course_units,id',
+            'saber' => 'nullable|integer|min:0|max:100',
+            'saber_hacer_convivir' => 'nullable|integer|min:0|max:100',
         ]);
 
         try {
-            // Obtener la inscripción para verificar derecho a examen
-            $inscripcion = \App\Models\Inscripcion::findOrFail($validated['inscripcion_id']);
-            
-            // Verificar derecho a examen
-            $tieneDerechoExamen = $this->calificacionService->tieneDerechoExamen(
-                $inscripcion->student_id,
-                $inscripcion->academic_load_id,
-                $validated['unidad']
-            );
+            // Verificar que la unidad existe
+            $courseUnit = \App\Models\CourseUnit::findOrFail($validated['course_unit_id']);
 
-            // Buscar o crear calificación detalle
-            $calificacion = \App\Models\CalificacionDetalle::firstOrNew([
-                'inscripcion_id' => $validated['inscripcion_id'],
-                'unidad' => $validated['unidad'],
+            // Usar el servicio para guardar la calificación
+            $calificacion = $this->calificacionService->guardarCalificacion([
+                'student_id' => $validated['student_id'],
+                'course_unit_id' => $validated['course_unit_id'],
+                'saber' => $validated['saber'] ?? null,
+                'saber_hacer_convivir' => $validated['saber_hacer_convivir'] ?? null,
             ]);
-
-            // Si es nueva, establecer valores por defecto
-            if (!$calificacion->exists) {
-                $calificacion->score_tareas = 0.00;
-                $calificacion->score_examen = null;
-                $calificacion->score_conducta = 0.00; // Default para NOT NULL
-                $calificacion->derecho_examen = $tieneDerechoExamen;
-            }
-
-            // Solo actualizar los campos que se envían explícitamente
-            if (isset($validated['score_examen'])) {
-                $calificacion->score_examen = $tieneDerechoExamen ? $validated['score_examen'] : null;
-            }
-            
-            if (isset($validated['score_conducta'])) {
-                $calificacion->score_conducta = $validated['score_conducta'];
-            }
-            
-            // Actualizar derecho_examen siempre
-            $calificacion->derecho_examen = $tieneDerechoExamen;
-            $calificacion->save();
-
-            // Recalcular promedio usando el nuevo servicio
-            // Esto calculará automáticamente las tareas desde las actividades
-            $calificacion = \App\Services\GradeCalculatorService::recalculateUnitAverage(
-                $validated['inscripcion_id'],
-                $validated['unidad']
-            );
             
             return response()->json([
                 'message' => 'Calificación guardada exitosamente',
-                'calificacion' => $calificacion,
+                'calificacion' => [
+                    'id' => $calificacion->id,
+                    'saber' => $calificacion->saber,
+                    'saber_hacer_convivir' => $calificacion->saber_hacer_convivir,
+                    'calificacion_final_unidad' => $calificacion->calificacion_final_unidad,
+                ],
             ], 201);
             
         } catch (\Exception $e) {
@@ -118,6 +113,90 @@ class GradeController extends Controller
             return response()->json([
                 'message' => $e->getMessage(),
             ], 422);
+        }
+    }
+
+    /**
+     * Obtener unidades configuradas para una materia
+     */
+    public function getCourseUnits(Request $request)
+    {
+        $validated = $request->validate([
+            'academic_load_id' => 'required|exists:academic_loads,id',
+        ]);
+
+        try {
+            $courseUnits = \App\Models\CourseUnit::where('academic_load_id', $validated['academic_load_id'])
+                ->orderBy('nombre')
+                ->get();
+
+            return response()->json($courseUnits);
+        } catch (\Exception $e) {
+            \Log::error('Error obteniendo unidades de curso: ' . $e->getMessage(), [
+                'request' => $validated,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'message' => 'Error al obtener las unidades: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Guardar configuración de unidades dinámicas
+     * Elimina las unidades anteriores y guarda las nuevas
+     */
+    public function saveUnits(Request $request)
+    {
+        $validated = $request->validate([
+            'academic_load_id' => 'required|exists:academic_loads,id',
+            'unidades' => 'required|array|min:1',
+            'unidades.*.nombre' => 'required|string|max:255',
+            'unidades.*.porcentaje' => 'required|integer|min:1|max:100',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            // Validar que la suma de porcentajes sea exactamente 100%
+            $sumaPorcentajes = array_sum(array_column($validated['unidades'], 'porcentaje'));
+            if ($sumaPorcentajes !== 100) {
+                return response()->json([
+                    'message' => "La suma de los porcentajes debe ser exactamente 100%. Actual: {$sumaPorcentajes}%"
+                ], 422);
+            }
+
+            // Eliminar unidades anteriores de esta carga académica
+            \App\Models\CourseUnit::where('academic_load_id', $validated['academic_load_id'])->delete();
+
+            // Crear las nuevas unidades
+            $courseUnits = [];
+            foreach ($validated['unidades'] as $unidad) {
+                $courseUnits[] = \App\Models\CourseUnit::create([
+                    'academic_load_id' => $validated['academic_load_id'],
+                    'nombre' => $unidad['nombre'],
+                    'porcentaje' => $unidad['porcentaje'],
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Unidades configuradas exitosamente',
+                'course_units' => $courseUnits,
+            ], 201);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error guardando unidades: ' . $e->getMessage(), [
+                'request' => $validated,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'message' => 'Error al guardar las unidades: ' . $e->getMessage()
+            ], 500);
         }
     }
 
@@ -221,8 +300,19 @@ class GradeController extends Controller
     {
         $validated = $request->validate([
             'academic_load_id' => 'required|exists:academic_loads,id',
-            'unidad' => 'required|integer|in:1,2,3',
+            'course_unit_id' => 'required|integer|exists:course_units,id',
         ]);
+
+        // Verificar que la unidad pertenece a esta carga académica
+        $courseUnit = \App\Models\CourseUnit::where('id', $validated['course_unit_id'])
+            ->where('academic_load_id', $validated['academic_load_id'])
+            ->first();
+        
+        if (!$courseUnit) {
+            return response()->json([
+                'error' => 'La unidad especificada no pertenece a esta carga académica'
+            ], 422);
+        }
 
         $inscripciones = \App\Models\Inscripcion::where('academic_load_id', $validated['academic_load_id'])
             ->with('student.studentDetail')
@@ -232,7 +322,7 @@ class GradeController extends Controller
             $porcentaje = $this->calificacionService->calcularPorcentajeAsistencia(
                 $inscripcion->student_id,
                 $inscripcion->academic_load_id,
-                $validated['unidad']
+                $validated['course_unit_id'] // Usar course_unit_id en lugar de unidad numérica
             );
 
             return [
@@ -254,16 +344,24 @@ class GradeController extends Controller
     {
         $validated = $request->validate([
             'academic_load_id' => 'required|exists:academic_loads,id',
-            'unidad' => 'required|integer|in:1,2,3',
+            'course_unit_id' => 'required|exists:course_units,id',
         ]);
 
         try {
+            // Verificar que la unidad pertenece a esta carga académica
+            $courseUnit = \App\Models\CourseUnit::where('id', $validated['course_unit_id'])
+                ->where('academic_load_id', $validated['academic_load_id'])
+                ->first();
+            
+            if (!$courseUnit) {
+                return response()->json([
+                    'message' => 'La unidad seleccionada no pertenece a esta materia.'
+                ], 404);
+            }
+
             // Obtener todas las calificaciones de esta unidad
-            $calificaciones = \App\Models\CalificacionDetalle::whereHas('inscripcion', function ($query) use ($validated) {
-                $query->where('academic_load_id', $validated['academic_load_id']);
-            })
-            ->where('unidad', $validated['unidad'])
-            ->get();
+            $calificaciones = \App\Models\CalificacionDetalle::where('course_unit_id', $validated['course_unit_id'])
+                ->get();
 
             if ($calificaciones->isEmpty()) {
                 return response()->json([
