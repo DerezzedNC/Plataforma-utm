@@ -1,12 +1,15 @@
 # 1. Usar la imagen oficial de PHP con Apache
 FROM php:8.2-apache
 
-# 2. Instalar herramientas y traductor de PostgreSQL
+# 2. Instalar herramientas, traductor de PostgreSQL y Node.js para compilar Vue
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     zip \
     unzip \
     git \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && docker-php-ext-install pdo pdo_pgsql
 
 # 3. Traer Composer
@@ -19,16 +22,20 @@ COPY . .
 # 5. Instalar dependencias de Laravel
 RUN composer install --optimize-autoloader --no-dev
 
-# 6. Dar permisos para que Laravel pueda guardar archivos
+# 6. Compilar el frontend (Vue + Vite)
+RUN npm install
+RUN npm run build
+
+# 7. Dar permisos para que Laravel pueda guardar archivos
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# 7. Configurar Apache para que apunte a la carpeta "public" de Laravel
+# 8. Configurar Apache para que apunte a la carpeta "public" de Laravel
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# 8. Activar las rutas amigables
+# 9. Activar las rutas amigables
 RUN a2enmod rewrite
 
-# 9. Abrir el puerto 80 (el estándar de internet)
+# 10. Abrir el puerto 80
 EXPOSE 80
