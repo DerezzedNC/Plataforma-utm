@@ -23,7 +23,7 @@ COPY . .
 RUN composer install --optimize-autoloader --no-dev
 
 # 6. Compilar el frontend (Vue + Vite)
-RUN npm install
+RUN npm install --legacy-peer-deps
 RUN npm run build
 
 # 7. Dar permisos para que Laravel pueda guardar archivos
