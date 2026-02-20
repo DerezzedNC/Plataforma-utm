@@ -1,0 +1,8 @@
+POST http://utm-web.test/api/login
+Accept: application/json
+Content-Type: application/json
+
+{
+    "email": "24090637@alumno.utmetropolitana.edu.mx",
+    "password": "12345678"
+}

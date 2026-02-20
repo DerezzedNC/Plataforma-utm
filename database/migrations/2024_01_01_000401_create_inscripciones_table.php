@@ -11,10 +11,27 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('inscripciones', function (Blueprint $table) {
+        // Verificar si las tablas necesarias existen
+        $hasUsers = Schema::hasTable('users');
+        $hasAcademicLoads = Schema::hasTable('academic_loads');
+
+        Schema::create('inscripciones', function (Blueprint $table) use ($hasUsers, $hasAcademicLoads) {
             $table->id();
-            $table->foreignId('student_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('academic_load_id')->constrained('academic_loads')->onDelete('cascade');
+            
+            // Crear foreign key a users solo si existe
+            if ($hasUsers) {
+                $table->foreignId('student_id')->constrained('users')->onDelete('cascade');
+            } else {
+                $table->unsignedBigInteger('student_id');
+            }
+            
+            // Crear foreign key a academic_loads solo si existe
+            if ($hasAcademicLoads) {
+                $table->foreignId('academic_load_id')->constrained('academic_loads')->onDelete('cascade');
+            } else {
+                $table->unsignedBigInteger('academic_load_id')->nullable();
+            }
+            
             $table->string('cuatrimestre'); // Formato: 2025-1
             $table->decimal('promedio_final', 5, 2)->nullable();
             $table->boolean('aprobado')->default(false);

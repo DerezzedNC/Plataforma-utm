@@ -12,6 +12,16 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Verificar que la tabla academic_loads existe antes de intentar modificarla
+        if (!Schema::hasTable('academic_loads')) {
+            return;
+        }
+
+        // Verificar si la columna ya existe para evitar errores en re-ejecuciones
+        if (Schema::hasColumn('academic_loads', 'academic_period_id')) {
+            return;
+        }
+
         // Primero, agregar la columna como nullable temporalmente (sin foreign key aún)
         Schema::table('academic_loads', function (Blueprint $table) {
             $table->unsignedBigInteger('academic_period_id')->nullable()->after('id');

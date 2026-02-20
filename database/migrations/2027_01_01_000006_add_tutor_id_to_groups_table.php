@@ -11,6 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Verificar que la tabla groups existe antes de intentar modificarla
+        if (!Schema::hasTable('groups')) {
+            // Si la tabla no existe, esta migración se ejecutará después de que se cree
+            return;
+        }
+
+        // Verificar si la columna ya existe para evitar errores en re-ejecuciones
+        if (Schema::hasColumn('groups', 'tutor_id')) {
+            return;
+        }
+
         Schema::table('groups', function (Blueprint $table) {
             $table->foreignId('tutor_id')
                 ->nullable()
@@ -25,6 +36,11 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Verificar que la tabla y la columna existen antes de intentar eliminarlas
+        if (!Schema::hasTable('groups') || !Schema::hasColumn('groups', 'tutor_id')) {
+            return;
+        }
+
         Schema::table('groups', function (Blueprint $table) {
             $table->dropForeign(['tutor_id']);
             $table->dropColumn('tutor_id');

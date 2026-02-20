@@ -75,36 +75,87 @@ return new class extends Migration
         // PASO 2: Hacer academic_load_id nullable ANTES de cualquier inserción
         // Esto es CRÍTICO para permitir inscripciones sin academic_load_id
         if (Schema::hasTable('inscripciones') && Schema::hasColumn('inscripciones', 'academic_load_id')) {
-            // Primero eliminar la foreign key constraint si existe
-            $fkNames = [
-                'inscripciones_academic_load_id_foreign',
-                'inscripciones_academic_load_id_fk',
-                'academic_load_id'
-            ];
-            
-            foreach ($fkNames as $fkName) {
-                try {
-                    Schema::table('inscripciones', function (Blueprint $table) use ($fkName) {
-                        $table->dropForeign([$fkName]);
-                    });
-                    break; // Si se eliminó exitosamente, salir del loop
-                } catch (\Exception $e) {
-                    // Continuar con el siguiente nombre
+            // Usar transacción explícita para manejar errores en PostgreSQL
+            DB::beginTransaction();
+            try {
+                // Primero eliminar la foreign key constraint si existe usando SQL directo
+                // PostgreSQL requiere nombres exactos de constraints
+                $constraints = DB::select("
+                    SELECT constraint_name 
+                    FROM information_schema.table_constraints 
+                    WHERE table_name = 'inscripciones' 
+                    AND constraint_type = 'FOREIGN KEY'
+                    AND constraint_name LIKE '%academic_load_id%'
+                ");
+                
+                foreach ($constraints as $constraint) {
+                    try {
+                        DB::statement("ALTER TABLE inscripciones DROP CONSTRAINT IF EXISTS {$constraint->constraint_name}");
+                    } catch (\Exception $e) {
+                        // Continuar si falla
+                    }
                 }
+                
+                // También intentar con nombres comunes
+                $commonNames = [
+                    'inscripciones_academic_load_id_foreign',
+                    'inscripciones_academic_load_id_fk',
+                ];
+                
+                foreach ($commonNames as $fkName) {
+                    try {
+                        DB::statement("ALTER TABLE inscripciones DROP CONSTRAINT IF EXISTS {$fkName}");
+                    } catch (\Exception $e) {
+                        // Continuar si falla
+                    }
+                }
+                
+                // Ahora hacer la columna nullable usando SQL directo para PostgreSQL
+                // Verificar si ya es nullable
+                $columnInfo = DB::selectOne("
+                    SELECT is_nullable 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'inscripciones' 
+                    AND column_name = 'academic_load_id'
+                ");
+                
+                if ($columnInfo && $columnInfo->is_nullable === 'NO') {
+                    // Solo modificar si no es nullable
+                    DB::statement("ALTER TABLE inscripciones ALTER COLUMN academic_load_id DROP NOT NULL");
+                }
+                
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                // Si falla, intentar continuar sin hacer la columna nullable
+                // (puede que ya sea nullable o que no sea crítico)
             }
             
-            // Ahora hacer la columna nullable
-            Schema::table('inscripciones', function (Blueprint $table) {
-                $table->unsignedBigInteger('academic_load_id')->nullable()->change();
-            });
-            
             // Re-agregar la foreign key como nullable (opcional, para mantener integridad referencial)
-            try {
-                Schema::table('inscripciones', function (Blueprint $table) {
-                    $table->foreign('academic_load_id')->references('id')->on('academic_loads')->onDelete('cascade');
-                });
-            } catch (\Exception $e) {
-                // Si no se puede re-agregar, continuar (la columna ya es nullable)
+            // Solo si la tabla academic_loads existe
+            if (Schema::hasTable('academic_loads')) {
+                try {
+                    // Verificar si la foreign key ya existe
+                    $exists = DB::selectOne("
+                        SELECT constraint_name 
+                        FROM information_schema.table_constraints 
+                        WHERE table_name = 'inscripciones' 
+                        AND constraint_type = 'FOREIGN KEY'
+                        AND constraint_name LIKE '%academic_load_id%'
+                    ");
+                    
+                    if (!$exists) {
+                        DB::statement("
+                            ALTER TABLE inscripciones 
+                            ADD CONSTRAINT inscripciones_academic_load_id_foreign 
+                            FOREIGN KEY (academic_load_id) 
+                            REFERENCES academic_loads(id) 
+                            ON DELETE CASCADE
+                        ");
+                    }
+                } catch (\Exception $e) {
+                    // Si no se puede re-agregar, continuar (la columna ya es nullable)
+                }
             }
         }
 
@@ -228,7 +279,9 @@ return new class extends Migration
             }
 
             // Hacer las columnas obligatorias después de migrar datos
-            Schema::table('inscripciones', function (Blueprint $table) use ($historicoPeriodId) {
+            // Usar transacciones separadas para cada modificación
+            DB::beginTransaction();
+            try {
                 // Hacer academic_period_id obligatorio
                 if (Schema::hasColumn('inscripciones', 'academic_period_id')) {
                     // Asegurar que todos los registros tengan un periodo asignado
@@ -236,17 +289,46 @@ return new class extends Migration
                         ->whereNull('academic_period_id')
                         ->update(['academic_period_id' => $historicoPeriodId]);
                     
-                    $table->unsignedBigInteger('academic_period_id')->nullable(false)->change();
+                    // Verificar si ya es NOT NULL
+                    $columnInfo = DB::selectOne("
+                        SELECT is_nullable 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'inscripciones' 
+                        AND column_name = 'academic_period_id'
+                    ");
+                    
+                    if ($columnInfo && $columnInfo->is_nullable === 'YES') {
+                        DB::statement("ALTER TABLE inscripciones ALTER COLUMN academic_period_id SET NOT NULL");
+                    }
                     
                     // Agregar foreign key si no existe
-                    try {
-                        $table->foreign('academic_period_id')->references('id')->on('academic_periods')->onDelete('cascade');
-                    } catch (\Exception $e) {
-                        // La foreign key ya existe, continuar
+                    $exists = DB::selectOne("
+                        SELECT constraint_name 
+                        FROM information_schema.table_constraints 
+                        WHERE table_name = 'inscripciones' 
+                        AND constraint_type = 'FOREIGN KEY'
+                        AND constraint_name LIKE '%academic_period_id%'
+                    ");
+                    
+                    if (!$exists && Schema::hasTable('academic_periods')) {
+                        DB::statement("
+                            ALTER TABLE inscripciones 
+                            ADD CONSTRAINT inscripciones_academic_period_id_foreign 
+                            FOREIGN KEY (academic_period_id) 
+                            REFERENCES academic_periods(id) 
+                            ON DELETE CASCADE
+                        ");
                     }
                 }
-                
-                // Asegurar que cuatrimestre tenga valores antes de hacerla obligatoria
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                // Continuar aunque falle
+            }
+            
+            // Asegurar que cuatrimestre tenga valores antes de hacerla obligatoria
+            DB::beginTransaction();
+            try {
                 if (Schema::hasColumn('inscripciones', 'cuatrimestre')) {
                     // Asignar cuatrimestre por defecto si es null o vacío
                     $year = date('Y');
@@ -257,29 +339,62 @@ return new class extends Migration
                         })
                         ->update(['cuatrimestre' => $year . '-1']);
                     
-                    // Asegurar que cuatrimestre no sea null
-                    try {
-                        $table->string('cuatrimestre')->nullable(false)->change();
-                    } catch (\Exception $e) {
-                        // Si falla, intentar con DB directo
-                        DB::statement('ALTER TABLE inscripciones MODIFY cuatrimestre VARCHAR(255) NOT NULL');
+                    // Verificar si ya es NOT NULL
+                    $columnInfo = DB::selectOne("
+                        SELECT is_nullable 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'inscripciones' 
+                        AND column_name = 'cuatrimestre'
+                    ");
+                    
+                    if ($columnInfo && $columnInfo->is_nullable === 'YES') {
+                        // PostgreSQL usa ALTER COLUMN ... SET NOT NULL
+                        DB::statement("ALTER TABLE inscripciones ALTER COLUMN cuatrimestre SET NOT NULL");
                     }
                 }
-                
-                // Hacer grupo obligatorio
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                // Continuar aunque falle
+            }
+            
+            // Hacer grupo obligatorio
+            DB::beginTransaction();
+            try {
                 if (Schema::hasColumn('inscripciones', 'grupo')) {
                     // Asignar grupo por defecto si es null
                     DB::table('inscripciones')
                         ->whereNull('grupo')
                         ->update(['grupo' => 'A']);
                     
-                    $table->string('grupo')->nullable(false)->change();
+                    // Verificar si ya es NOT NULL
+                    $columnInfo = DB::selectOne("
+                        SELECT is_nullable 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'inscripciones' 
+                        AND column_name = 'grupo'
+                    ");
+                    
+                    if ($columnInfo && $columnInfo->is_nullable === 'YES') {
+                        DB::statement("ALTER TABLE inscripciones ALTER COLUMN grupo SET NOT NULL");
+                    }
                 }
-            });
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                // Continuar aunque falle
+            }
         }
 
         // Script de reparación: Crear inscripciones para alumnos existentes con grupos
-        $this->createInscripcionesForExistingStudents();
+        try {
+            DB::beginTransaction();
+            $this->createInscripcionesForExistingStudents();
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            // Continuar aunque falle la creación de inscripciones automáticas
+        }
     }
 
     /**

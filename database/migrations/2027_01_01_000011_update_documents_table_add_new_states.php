@@ -73,6 +73,40 @@ return new class extends Migration
             
             // Re-habilitar foreign keys
             DB::statement('PRAGMA foreign_keys=ON');
+        } else if (DB::getDriverName() === 'pgsql') {
+            // Para PostgreSQL: usar ALTER COLUMN y CHECK constraint
+            DB::beginTransaction();
+            try {
+                // Primero actualizar estados existentes antes de cambiar el tipo
+                DB::table('documents')->where('estado', 'solicitado')->update(['estado' => 'pendiente_revisar']);
+                DB::table('documents')->where('estado', 'listo')->update(['estado' => 'listo_recoger']);
+                DB::table('documents')->where('estado', 'entregado')->update(['estado' => 'finalizado']);
+                
+                // Eliminar constraint anterior si existe
+                try {
+                    DB::statement("ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_estado_check");
+                } catch (\Exception $e) {
+                    // Continuar si no existe
+                }
+                
+                // Cambiar el tipo de columna a VARCHAR
+                DB::statement("ALTER TABLE documents ALTER COLUMN estado TYPE VARCHAR(255)");
+                
+                // Establecer valor por defecto
+                DB::statement("ALTER TABLE documents ALTER COLUMN estado SET DEFAULT 'pendiente_revisar'");
+                
+                // Agregar CHECK constraint para validar valores permitidos
+                DB::statement("
+                    ALTER TABLE documents 
+                    ADD CONSTRAINT documents_estado_check 
+                    CHECK (estado IN ('pendiente_revisar', 'pagar_documentos', 'en_proceso', 'listo_recoger', 'finalizado', 'cancelado'))
+                ");
+                
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
         } else {
             // Para MySQL/MariaDB, primero cambiar el enum, luego actualizar estados
             DB::statement("ALTER TABLE documents MODIFY COLUMN estado ENUM('pendiente_revisar', 'pagar_documentos', 'en_proceso', 'listo_recoger', 'finalizado', 'cancelado') DEFAULT 'pendiente_revisar'");
@@ -99,6 +133,28 @@ return new class extends Migration
             Schema::table('documents', function (Blueprint $table) {
                 $table->string('estado')->default('solicitado')->change();
             });
+        } else if (DB::getDriverName() === 'pgsql') {
+            // Para PostgreSQL: eliminar constraint y cambiar valores permitidos
+            DB::beginTransaction();
+            try {
+                // Eliminar constraint actual
+                DB::statement("ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_estado_check");
+                
+                // Cambiar valor por defecto
+                DB::statement("ALTER TABLE documents ALTER COLUMN estado SET DEFAULT 'solicitado'");
+                
+                // Agregar nuevo CHECK constraint con valores antiguos
+                DB::statement("
+                    ALTER TABLE documents 
+                    ADD CONSTRAINT documents_estado_check 
+                    CHECK (estado IN ('solicitado', 'en_proceso', 'listo', 'entregado', 'cancelado'))
+                ");
+                
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
         } else {
             DB::statement("ALTER TABLE documents MODIFY COLUMN estado ENUM('solicitado', 'en_proceso', 'listo', 'entregado', 'cancelado') DEFAULT 'solicitado'");
         }
