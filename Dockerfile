@@ -34,8 +34,8 @@ ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# 9. Activar las rutas amigables
-RUN a2enmod rewrite
+# 9. Configurar Apache para que use el puerto dinámico de Render (¡El cambio clave!)
+RUN sed -i 's/80/${PORT}/g' /etc/apache2/sites-available/000-default.conf /etc/apache2/ports.conf
 
-# 10. Abrir el puerto 80
-EXPOSE 80
+# 10. Activar las rutas amigables
+RUN a2enmod rewrite
