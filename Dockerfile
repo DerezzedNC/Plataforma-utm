@@ -42,4 +42,3 @@ RUN a2enmod rewrite
 
 # 11. Destruir cualquier caché local atrapada (¡La solución!)
 RUN php artisan config:clear
-RUN php artisan cache:clear
