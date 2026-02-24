@@ -95,8 +95,10 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            
-            'options' => []
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                \PDO::ATTR_TIMEOUT => 5,
+            ],
         ],
 
         'sqlsrv' => [
