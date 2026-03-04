@@ -28,18 +28,20 @@ class GradeController extends Controller
         $inscripciones = Inscripcion::where('student_id', $user->id)
             ->with([
                 'academicLoad.subject',
-                'calificacionesDetalle' => function ($query) {
-                    // Solo obtener calificaciones que tengan promedio_unidad calculado
-                    $query->whereNotNull('promedio_unidad');
-                }
+                'calificacionesDetalle' // Obtener todas las calificaciones, tengan promedio o no
             ])
             ->get();
 
         // Formatear calificaciones
         $calificaciones = [];
         foreach ($inscripciones as $inscripcion) {
-            // Solo obtener calificaciones que tengan promedio_unidad calculado (ya calificadas)
-            foreach ($inscripcion->calificacionesDetalle()->whereNotNull('promedio_unidad')->get() as $calificacion) {
+            
+            // Recorremos todos los detalles, tengan promedio o no
+            foreach ($inscripcion->calificacionesDetalle as $calificacion) {
+                
+                // Usamos isset para evitar el error de columna inexistente
+                $promedio = isset($calificacion->promedio_unidad) ? $calificacion->promedio_unidad : null;
+
                 $calificaciones[] = [
                     'id' => $calificacion->id,
                     'materia' => $inscripcion->academicLoad->subject->nombre ?? 'Materia no encontrada',
@@ -47,7 +49,7 @@ class GradeController extends Controller
                     'score_tareas' => $calificacion->score_tareas !== null ? (float) $calificacion->score_tareas : null,
                     'score_examen' => $calificacion->score_examen !== null ? (float) $calificacion->score_examen : null,
                     'score_conducta' => $calificacion->score_conducta !== null ? (float) $calificacion->score_conducta : null,
-                    'promedio_unidad' => $calificacion->promedio_unidad !== null ? (float) $calificacion->promedio_unidad : null,
+                    'promedio_unidad' => $promedio !== null ? (float) $promedio : null,
                     'derecho_examen' => (bool) $calificacion->derecho_examen,
                 ];
             }
