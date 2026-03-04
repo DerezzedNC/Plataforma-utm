@@ -40,4 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Endpoint para cerrar sesión (revocar token)
     Route::post('/logout', [AuthController::class, 'logout']);
+    
+    // Endpoint para obtener el horario del estudiante
+    Route::get('/student/schedule', [\App\Http\Controllers\Student\ScheduleController::class, 'show']);
 });

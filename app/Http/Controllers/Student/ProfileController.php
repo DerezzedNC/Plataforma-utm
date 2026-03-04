@@ -111,17 +111,37 @@ class ProfileController extends Controller
                 $file = $request->file('foto_perfil');
                 $filename = 'profile_' . $user->id . '_' . time() . '.' . $file->getClientOriginalExtension();
                 
-                // Guardar directamente en public/images/profiles (más confiable que storage)
-                $publicPath = public_path('images/profiles');
-                
-                // Crear directorio si no existe
-                if (!file_exists($publicPath)) {
-                    mkdir($publicPath, 0755, true);
+                // Usar Storage de Laravel (más seguro y confiable)
+                try {
+                    // Guardar en storage/app/public/profiles
+                    $path = $file->storeAs('profiles', $filename, 'public');
+                    $fotoPath = '/storage/' . $path;
+                } catch (\Exception $storageException) {
+                    // Fallback: intentar en public/images/profiles si storage falla
+                    $publicPath = public_path('images/profiles');
+                    
+                    // Verificar permisos antes de crear directorio
+                    if (!file_exists($publicPath)) {
+                        if (!is_writable(dirname($publicPath))) {
+                            throw new \Exception('No se tienen permisos para crear el directorio de imágenes. Contacte al administrador.');
+                        }
+                        if (!mkdir($publicPath, 0755, true)) {
+                            throw new \Exception('No se pudo crear el directorio de imágenes. Verifique los permisos del servidor.');
+                        }
+                    }
+                    
+                    // Verificar que el directorio sea escribible
+                    if (!is_writable($publicPath)) {
+                        throw new \Exception('El directorio de imágenes no tiene permisos de escritura. Contacte al administrador.');
+                    }
+                    
+                    // Mover el archivo
+                    if (!$file->move($publicPath, $filename)) {
+                        throw new \Exception('No se pudo guardar la imagen. Verifique los permisos del servidor.');
+                    }
+                    
+                    $fotoPath = '/images/profiles/' . $filename;
                 }
-                
-                // Mover el archivo
-                $file->move($publicPath, $filename);
-                $fotoPath = '/images/profiles/' . $filename;
             } 
             // Si se envía como base64 (para compatibilidad)
             elseif ($request->has('foto_perfil') && is_string($request->foto_perfil)) {
@@ -141,16 +161,37 @@ class ProfileController extends Controller
                     }
                     
                     $filename = 'profile_' . $user->id . '_' . time() . '.' . $extension;
-                    $publicPath = public_path('images/profiles');
                     
-                    // Crear directorio si no existe
-                    if (!file_exists($publicPath)) {
-                        mkdir($publicPath, 0755, true);
+                    // Usar Storage de Laravel para base64 también
+                    try {
+                        $path = Storage::disk('public')->put('profiles/' . $filename, $imageData);
+                        $fotoPath = '/storage/' . $path;
+                    } catch (\Exception $storageException) {
+                        // Fallback: intentar en public/images/profiles
+                        $publicPath = public_path('images/profiles');
+                        
+                        // Verificar permisos antes de crear directorio
+                        if (!file_exists($publicPath)) {
+                            if (!is_writable(dirname($publicPath))) {
+                                throw new \Exception('No se tienen permisos para crear el directorio de imágenes. Contacte al administrador.');
+                            }
+                            if (!mkdir($publicPath, 0755, true)) {
+                                throw new \Exception('No se pudo crear el directorio de imágenes. Verifique los permisos del servidor.');
+                            }
+                        }
+                        
+                        // Verificar que el directorio sea escribible
+                        if (!is_writable($publicPath)) {
+                            throw new \Exception('El directorio de imágenes no tiene permisos de escritura. Contacte al administrador.');
+                        }
+                        
+                        $path = $publicPath . '/' . $filename;
+                        if (file_put_contents($path, $imageData) === false) {
+                            throw new \Exception('No se pudo guardar la imagen. Verifique los permisos del servidor.');
+                        }
+                        
+                        $fotoPath = '/images/profiles/' . $filename;
                     }
-                    
-                    $path = $publicPath . '/' . $filename;
-                    file_put_contents($path, $imageData);
-                    $fotoPath = '/images/profiles/' . $filename;
                 } else {
                     // Si no es base64, asumir que es una URL o ruta
                     $fotoPath = $request->foto_perfil;
