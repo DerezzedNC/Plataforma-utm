@@ -9,6 +9,9 @@ class Justificacion extends Model
 {
     use HasFactory;
 
+    // Forzar el nombre correcto de la tabla en español
+    protected $table = 'justificaciones';
+
     protected $fillable = [
         'attendance_id',
         'student_id',
