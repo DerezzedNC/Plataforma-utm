@@ -43,4 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Endpoint para obtener el horario del estudiante
     Route::get('/student/schedule', [\App\Http\Controllers\Student\ScheduleController::class, 'show']);
+    
+    // Endpoint para obtener las calificaciones del estudiante
+    Route::get('/student/grades', [\App\Http\Controllers\Student\GradeController::class, 'index']);
 });
