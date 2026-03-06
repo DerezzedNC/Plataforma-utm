@@ -46,4 +46,6 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Endpoint para obtener las calificaciones del estudiante
     Route::get('/student/grades', [\App\Http\Controllers\Student\GradeController::class, 'index']);
+
+    Route::get('/student/courses', [\App\Http\Controllers\Student\CourseController::class, 'index']);
 });
