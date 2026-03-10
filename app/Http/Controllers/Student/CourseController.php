@@ -98,7 +98,22 @@ class CourseController extends Controller
                 })->toArray(),
             ]);
 
-            return response()->json($courses);
+            // 3. Formatear los datos exactamente como los espera tu App Móvil
+            $mappedCourses = $courses->map(function($course) {
+                return [
+                    'id' => $course->id,
+                    'titulo' => $course->nombre,
+                    'descripcion' => $course->descripcion ?? 'Sin descripción',
+                    'tipo' => $course->tipo,
+                    // Asegúrate de que estos nombres coincidan con los de tu base de datos
+                    'duracion' => $course->duracion ?? 'No especificada',
+                    // Si el instructor viene de una relación, lo extraemos:
+                    'instructor' => $course->teacher ? $course->teacher->name : ($course->instructor ?? 'Por asignar'),
+                    'carreras' => $course->careers->pluck('nombre')->toArray()
+                ];
+            });
+
+            return response()->json($mappedCourses);
         } catch (\Exception $e) {
             \Log::error('Error en Student/CourseController@index: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
