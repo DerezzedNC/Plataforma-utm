@@ -48,4 +48,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/student/grades', [\App\Http\Controllers\Student\GradeController::class, 'index']);
 
     Route::get('/student/courses', [\App\Http\Controllers\Student\CourseController::class, 'index']);
+
+    // Endpoints para Trámites / Documentos
+    Route::get('/student/documents', [\App\Http\Controllers\Student\DocumentController::class, 'index']);
+    Route::post('/student/documents', [\App\Http\Controllers\Student\DocumentController::class, 'store']);
 });
