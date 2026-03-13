@@ -59,13 +59,13 @@ class AuthController extends Controller
 
         $user = Auth::user();
 
-        // Validar que el usuario sea un alumno
-        if (!$user->isAlumno()) {
+        // Validar que el usuario sea alumno o maestro (la app es para ambos)
+        if (!$user->isAlumno() && !$user->isMaestro()) {
             Auth::logout();
-            
+
             return response()->json([
                 'message' => 'Acceso denegado',
-                'error' => 'Esta aplicación móvil es exclusiva para alumnos. Los maestros y administradores deben usar el portal web.'
+                'error' => 'Esta aplicación es para alumnos y docentes. Los administradores deben usar el portal web.'
             ], 403);
         }
 
