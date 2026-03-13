@@ -52,4 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Endpoints para Trámites / Documentos
     Route::get('/student/documents', [\App\Http\Controllers\Student\DocumentController::class, 'index']);
     Route::post('/student/documents', [\App\Http\Controllers\Student\DocumentController::class, 'store']);
+
+    // Endpoints para Docentes / Tutores
+    Route::get('/teacher/tutor/dashboard', [\App\Http\Controllers\Teacher\TutorDashboardController::class, 'dashboard']);
 });
